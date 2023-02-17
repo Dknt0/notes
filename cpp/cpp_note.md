@@ -4155,7 +4155,7 @@ cpp中通过rand函数生成int型随机数。
 ```cpp
 #include <ctime>
 
-srand((unsigned int)time(NULL);
+srand((unsigned int)time(NULL));
 int a = rand() % 100; # 生成0~99的随机整数
 ```
 
