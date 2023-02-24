@@ -81,6 +81,12 @@ $ git remote add origin <server>
 $ git push -u origin main
 ```
 
+使用`checkout`切换分支。
+
+```bash
+$ git checkout
+```
+
 # 示例
 
 **初始化并上传一个本地仓库**
