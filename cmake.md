@@ -57,3 +57,31 @@ target_link_libraries( test hello_shared )
 # 添加Eigen库路径
 include_directories( "/usr/include/eigen3" )
 ```
+
+#
+
+常用库的添加方式：
+
+```cmake
+# OpenCV
+find_package(OpenCV REQUIRED)
+include_directories(${OpenCV_INCLUDE_DIRS})
+target_link_libraries(target ${OpenCV_LIBS})
+
+# Eigen
+include_directories("/usr/include/eigen3")
+
+# g2o
+find_package(G2O REQUIRED)
+include_directories(${G2O_INCLUDE_DIRS})
+target_link_libraries(target ${G2O_CORE_LIBRARY} ${G2O_STUFF_LIBRARY})
+
+# Ceres
+find_package(Ceres REQUIRED)
+include_directories(${CERES_INCLUDE_DIRS})
+target_link_libraries(target ${CERES_LIBRARIES})
+```
+
+# 源码编译软件时技巧
+
+建立build目录，`cmake ..`之后，可以通过`cmake . -L`来查看配置信息与全部可能的选项

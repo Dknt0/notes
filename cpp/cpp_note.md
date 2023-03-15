@@ -4120,6 +4120,41 @@ iterator set_union(iterator i_begin1, iterator i_end1,
                    iterator o_begin);
 ```
 
+## 6 流对象
+
+C++中有一系列流对象，如标准输入输出流、文件读写流、字符串流等。
+
+### 6._ 字符串流stringstream
+
+字符串流用于实现字符串与其他类型间的类型转换。包含在头文件`<sstream>`下。
+
+三种类`istringstream`、`ostringstream`、`stringstream`。
+
+* `sstream`自动按' '分割字符串。
+
+* 重复使用一个流对象时，需要用`clear()`函数重置流状态。
+
+常用成员函数：
+
+```cpp
+#include <sstream> // 字符串流包含在这个头文件下
+
+stringstream ss;
+
+/* 类型转换 */
+int a;
+ss << string("123");
+ss >> a; // a = 123
+
+/* 字符串分割 */
+string s1, s2, s3;
+ss.clear(); // 重置流的标志状态
+ss.str("abc def ghi"); // 重置流缓存
+cout << ss.str() << endl; // 将流缓存按字符串输出，注意这个重载函数的用法完全不同
+ss >> s1 >> s2 >> s3; // s1 = "abc"; s2 = "def"; s3 = "ghi"
+
+```
+
 # C++标准库
 
 ## 1 cmath数学库
