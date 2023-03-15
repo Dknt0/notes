@@ -63,7 +63,7 @@ int main(int argc, const char** argv) {
 
 # 2 core模块
 
-# 2.1 矩阵与向量
+## 2.1 矩阵与向量
 
 OpenCV Mat由**矩阵头**和**指针**组成，有浅拷贝与深拷贝之分。
 
@@ -110,6 +110,48 @@ Point2f P(5, 1); // 二维点
 Point3f P3f(2, 6, 7); // 三维点
 ```
 
+**读写矩阵元素**。OpenCV中，读写图像像素时一定要给出像素的类型。
+
+```cpp
+/* C数组格式访问，快速 */
+uchar* p;
+for (int i = 0; i < nRows; ++i) {
+    p = I.ptr<uchar>(i); // 行
+    for (int j = 0; j < nCols; ++j) {
+        p[j] = table[p[j]]; // 列
+    }
+}
+
+/* 迭代器，安全 */
+const int channels = I.channels();
+switch(channels)
+{
+case 1:
+    {
+        MatIterator_<uchar> it, end;
+        for( it = I.begin<uchar>(), end = I.end<uchar>(); it != end; ++it)
+            *it = ...;
+        break;
+    }
+case 3:
+    {
+        MatIterator_<Vec3b> it, end;
+        for( it = I.begin<Vec3b>(), end = I.end<Vec3b>(); it != end; ++it)
+        {
+            (*it)[0] = ...;
+        }
+    }
+}
+
+/* 随机访问，随机 */
+I.at<uchar>(i,j) = ...;
+```
+
+## 2.2 图像卷积
+
+
+
+
 
 > 基本绘图
 
@@ -123,11 +165,11 @@ Point3f P3f(2, 6, 7); // 三维点
 > 逻辑运算
 
 
-> 色彩空间变换、几何变换、阈值化处理、滤波、形态学变换、图像梯度、边缘检测、霍夫变换、图像金字塔、角点检测、特征提取、特征匹配
+> 色彩空间变换、几何变换、阈值化处理、**滤波**、形态学变换、图像梯度、边缘检测、霍夫变换、图像金字塔、角点检测、**特征提取、特征匹配**
 
 > 光流
 
-> 相机校准、畸变矫正、三维重建
+> **相机校准、畸变矫正**、三维重建
 
 > 机器学习，聚类、检测器
 
