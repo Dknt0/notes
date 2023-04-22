@@ -1,7 +1,7 @@
 > 这是一份C++笔记，重点介绍面向对象、泛型编程的语法和细节，介绍一些常见库的用法。
 > 
 > 参考：
->  
+> 
 > * [黑马程序员C++教程](https://www.bilibili.com/video/BV1et411b73Z/?p=1)
 > 
 > * C++ Primer E4
@@ -122,7 +122,7 @@ C++命名习惯：
 可以通过sizeof关键字来查看数据类型占用的空间
 
 ```cpp
-sizeof(int)
+sizeof(int);
 ```
 
 ### 2.1 整型
@@ -179,7 +179,7 @@ ASCII表
 C风格字符串
 
 ```cpp
-char str1[] = "this is a C type string"
+char str1[] = "this is a C type string";
 ```
 
 长度固定，最后一个字符为'\0'。
@@ -187,7 +187,7 @@ char str1[] = "this is a C type string"
 C++ String库
 
 ```cpp
-std::string str2 = "this is an object of class string"
+std::string str2 = "this is an object of class string";
 ```
 
 长度可调整，提供一系列方法。
@@ -2665,7 +2665,7 @@ STL大体分为<mark>六大组件</mark>，包括：**容器、算法、迭代�
 
 5. **适配器**：一种用来修饰容器或仿函数或迭代器接口的东西。（比较难）
 
-6. **空间适配器**：负责空间的适配与管理。（实现大小动态变化的容器）
+6. **空间配置器**：负责空间的适配与管理。（实现大小动态变化的容器）
 
 ### 2.3 STL中的容器、算法、迭代器
 
@@ -4152,7 +4152,6 @@ ss.clear(); // 重置流的标志状态
 ss.str("abc def ghi"); // 重置流缓存
 cout << ss.str() << endl; // 将流缓存按字符串输出，注意这个重载函数的用法完全不同
 ss >> s1 >> s2 >> s3; // s1 = "abc"; s2 = "def"; s3 = "ghi"
-
 ```
 
 # C++标准库
