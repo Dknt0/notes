@@ -3,13 +3,14 @@
 > [XTDrone文档](https://www.yuque.com/xtdrone/manual_cn/basic_config_13)
 > 
 > 无人机仿真环境配置十分困难，甚至比开发困难。
-> 已知的仿真环境有如下：
+> 已知的开源仿真环境有如下：
 > 
-> 1. XTDrone 用过。有多种任务的示例代码
+> 1. XTDrone 用过，很卡。有多种任务的示例代码
 > 2. Prometheus 阿木实验室开发 必须要买他的手柄，不愧是商家
 > 3. RflySim 北航可靠飞行控制组 基于Matlab和FlightGear，但我不是Matlab选手
-> 4. PX4 SITL + ROS2 + Ignition Gazebo  需要肝
-> 5. APM SITL + Gazebo Garden 需要肝
+> 4. [Hello Sky - GAAS](https://gaas.gitbook.io/guide/)
+> 5. PX4 SITL + ROS2 + Ignition Gazebo  需要肝
+> 6. APM SITL + Gazebo Garden 需要肝
 > 
 > 万能安装工具 aptitude
 > 

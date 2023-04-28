@@ -1,6 +1,12 @@
 # Linux下C++多线程
 
-> 参考: [菜鸟教程C++多线程](https://www.runoob.com/cplusplus/cpp-multithreading.html)
+> 参考:
+> 
+> [菜鸟教程C++多线程](https://www.runoob.com/cplusplus/cpp-multithreading.html)
+> 
+> [Introduction · C++并发编程](http://shouce.jb51.net/cpp_concurrency_in_action/)
+
+# 1 Linux pthread 库
 
 Linux下使用POSIX编写多线程程序。
 
@@ -74,4 +80,55 @@ int main(){
 ```cpp
 pthread_join(threadid, status) 
 pthread_detach(threadid) 
+```
+
+# 2 C++ 11 多线程
+
+## 2.1 thread 多线程
+
+thread 是 C++ 11 中引入的一个与平台无关的线程库。
+
+可以向线程对象传入函数指针、仿函数、匿名函数。基本使用如下：
+
+```cpp
+#include <thread>
+// 以函数指针为例
+void func(int a)
+{
+    std::cout << "hello " << std::this_thread::get_id() << std::endl;
+    std::cout << a << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    std::cout << "world " << std::this_thread::get_id() << std::endl;
+}
+// 开线程，第一个参数是函数指针，第二个是参数
+std::thread t1(func, 1);
+// 等待线程执行结束
+t1.join();
+```
+
+promise future 用于实现线程异步并发
+
+## 2.2 mutex 互斥锁
+
+实现临界资源互斥访问。示例如下：
+
+```cpp
+#include <mutex>
+// 创建锁
+std::mutex m1;
+// 上锁
+m1.lock();
+// 解锁
+m1.unlock();
+```
+
+## 2.3 promise & future 异步并发
+
+实例如下：
+
+```cpp
+#include <future>
+// 创建 promise
+auto prom = std::promise<bool>();
+auto future = 
 ```

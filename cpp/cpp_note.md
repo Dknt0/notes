@@ -4168,7 +4168,29 @@ pow函数以第一个参数为底数，第二个参数为指数，计算幂。
 double_res = pow(double_a, double_b) // 计算a^b
 ```
 
-## _ iostream输入输出流
+## 2 iostream输入输出流
+
+## 2.1 std::cout 标准输出流
+
+输出流有一个缓存区，我们向流中写入的数据不会马上输出，只有缓存区满，或遇到特定函数时才会输出并缓存区。
+
+```cpp
+std::cout << std::endl; // 输出，并清空缓存区，以换行符结尾
+std::cout << std::flush; // 输出，并清空缓存区，不换行
+std::cout.clear(); // 清空缓存区，不输出
+```
+
+当我们需要重写行时，可以用`std::flush`实现。
+
+```cpp
+std::cout << "\rWrite something." << std::flush;
+```
+
+
+
+
+
+
 
 # 常用函数
 
