@@ -85,3 +85,5 @@ target_link_libraries(target ${CERES_LIBRARIES})
 # 源码编译软件时技巧
 
 建立build目录，`cmake ..`之后，可以通过`cmake . -L`来查看配置信息与全部可能的选项
+
+直接 `cmake-gui ..` 更香
