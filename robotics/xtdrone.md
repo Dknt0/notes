@@ -157,4 +157,6 @@ killall -9 gzserver
 
 1. ROS 提供了 MAVLink 的接口 <mark>MAVROS</mark>。
 
-2. <mark>ORB SLAM</mark> 的调用，通过ROS或不通过ROS。
+2. 我可以写 MAVSDK，与 MAVROS 相比谁更有优势？
+
+3. <mark>ORB SLAM</mark> 的调用，通过ROS或不通过ROS。
