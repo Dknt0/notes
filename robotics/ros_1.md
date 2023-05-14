@@ -1,6 +1,6 @@
 # ROS Noetic 编程
 
-> 好的 cpp 绘图方法？
+> ROS Noetic 复习。ROS 是我在刚入门 Linux 时学习的，当时没有什么经验，错过了许多重点。这次再读文档，记录一些用得到的东西。
 > 
 > 参考：
 > 
@@ -481,13 +481,11 @@ T.translation.x; // 3d向量
 
 > 注意，tf2 中的变换都可以使用 geometry_msgs 中的消息类型实现。
 
-
 ### 2.5.4 传感器消息 sensor_msgs
 
 包含了图像、点云、IMU、激光雷达等多种传感器类型。
 
 如何将 sensor_msgs 消息转换到 OpenCV、PCL 等库中？
-
 
 # 3 启动
 
@@ -940,8 +938,6 @@ launch 文件启动 Rviz。其中`config.rviz`为 Rviz 配置文件。
 
 组件常用
 
-
-
 # 7 Gazebo Classical 仿真
 
 ROS Noetic 默认安装 Gazebo Classical 11
@@ -1105,11 +1101,7 @@ URDF 文件结构如下
 
 * fixed: 固定关节，不允许运动的特殊关节
 
-
-
 ### 7.1.3 插件 plugin
-
-
 
 ### 7.1.4 URDF 显示与模型生成
 
@@ -1118,7 +1110,6 @@ URDF 文件结构如下
 **显示机器人**。使用 `robot_description` 将 urdf 文件上传到参数服务器，之后可在 Rviz 中显示模型、在 gz 中生成机器人。
 
 **发布关节状态**。使用`joint_state_publisher`或`joint_state_publisher_gui`发布关节状态，便于在Rviz中显示，只需要两个节点中的一个。发布的信息是 TF。
-
 
 修改 launch 文件
 
@@ -1182,7 +1173,6 @@ xacro 文件的一般格式：
 
 使用`${expression}`计算数学表达式
 
-
 ### 7.2.2 xacro 使用
 
 xacro 转 urdf 命令
@@ -1196,7 +1186,6 @@ launch 文件
 ```xml
 <param name="robot_description" command="$(find xacro)/xacro $(find pkg_name)/urdf/xacro/robot.xacro" />
 ```
-
 
 ## 7.3 传感器插件 sensor-plugin
 
@@ -1336,7 +1325,6 @@ launch 文件中添加如下内容：
 
 1
 
-
 ## 7.4 驱动器插件 driver-plugin
 
 ROS 设计了控制器接口 <mark>ros_control</mark>，是一套中间件，gazebo 实现了 ros_control 的接口。
@@ -1387,8 +1375,6 @@ ROS 设计了控制器接口 <mark>ros_control</mark>，是一套中间件，gaz
 ## 7.5 SDF 世界与机器人模型
 
 见 gazeboGarden 笔记
-
-
 
 # 8 平面机器人导航
 
@@ -1544,7 +1530,7 @@ rosrun map_server map_server map_name.yaml
 
 ## 8.3 2D定位 amcl
 
->[ROS AMCL WIKI](http://wiki.ros.org/amcl)
+> [ROS AMCL WIKI](http://wiki.ros.org/amcl)
 
 AMCL(adaptive Monte Carlo Localization) 是用于2D移动机器人的概率定位系统，它实现了自适应（或KLD采样）蒙特卡洛定位方法，可以根据已有地图使用粒子滤波器推算机器人位置。
 
@@ -1657,7 +1643,7 @@ move_base 使用时需要编辑 `launch`, `costmap_common_params.yaml`, `local_c
 
 ```yaml
 #机器人几何参，如果机器人是圆形，设置 robot_radius,如果是其他形状设置 footprint
-robot_radius: 0.12 #圆形
+robot_radius: 0.12 # 圆形
 # footprint: [[-0.12, -0.12], [-0.12, 0.12], [0.12, 0.12], [0.12, -0.12]] #其他形状
 
 obstacle_range: 3.0 # 用于障碍物探测，比如: 值为 3.0，意味着检测到距离小于 3 米的障碍物时，就会引入代价地图
@@ -1736,7 +1722,7 @@ TrajectoryPlannerROS:
 
   # 是否是全向移动机器人
   holonomic_robot: false
-    
+
   # Forward Simulation Parameters，前进模拟参数
   sim_time: 0.8
   vx_samples: 18
@@ -1745,4 +1731,3 @@ TrajectoryPlannerROS:
 ```
 
 # 9 机械臂抓取
-
