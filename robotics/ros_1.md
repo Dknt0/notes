@@ -1730,4 +1730,31 @@ TrajectoryPlannerROS:
   sim_granularity: 0.05
 ```
 
+### 8.4.6 move_base Action 调用
+
+move_base goal 是通过 Action 实现的。
+
 # 9 机械臂抓取
+
+# 10 常用工具
+
+## 10.1 深度图像转激光
+
+可以通过 depthimage_to_laserscan 将深度图像中水平的点云转化为二维激光点云。虽然点云范围有限，但极大地降低了成本。实际上，导航中我们只需要直到前面是否有障碍物。
+
+安装
+
+```shell
+sudo apt-get install ros-noetic-depthimage-to-laserscan
+```
+
+使用。在 launch 文件中添加：
+
+```xml
+<launch>
+    <node pkg="depthimage_to_laserscan" type="depthimage_to_laserscan" name="depthimage_to_laserscan">
+        <remap from="image" to="/camera/depth/image_raw" />
+        <param name="output_frame_id" value="camera"  />
+    </node>
+</launch>
+```

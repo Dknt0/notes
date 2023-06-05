@@ -1,6 +1,9 @@
 <!-- 研一上学期教学实践，OpenCV简要说明 -->
+
 <!-- Author: Dknt -->
+
 <!-- Date: 2022.12 -->
+
 # OpenCV-Python简介
 
 OpenCV是一个跨平台的开源图像处理库。简述历史，Intel，俄罗斯OpenCV团队，柳树车库。OpenCV包含了一系列图像处理和机器学习算法，支持C++、Python、Java、Matlab等编程语言，支持基于CUDA的GPU加速。
@@ -19,6 +22,7 @@ pip install opencv-python
 
 安装numpy用于支持矩阵运算，OpenCV中的大部分数据结构都是numpy.ndarray类型。opencv-python为OpenCV-Python的主要模块。  
 也可以通过如下命令安装OpenCV-Python的主要模块和拓展模块。
+
 ```shell
 pip install opencv-contrib-python
 ```
@@ -30,6 +34,7 @@ OpenCV早期使用C语言编写，之后用C++重写。在python中使用OpenCV�
 import cv2 as cv
 print(cv.__version__)
 ```
+
 运行，如果输出版本号，则安装成功。
 
 **什么是数字图像？**
@@ -88,7 +93,6 @@ while True:
 ```
 
 在这个例程中，我们读取并显示了图片，如果我们按下q（当图片显示窗口被激活时）退出，按下w保存图片并退出，否则程序将一直循环等待，直到我们按下这两个按键中的一个。
-
 
 ### 2.2 视频读写与显示
 
@@ -180,6 +184,7 @@ Opencv提供了一系列画图工具，例如绘制直线、圆、正方形、�
 * `lineType` 线格式，8连通或4连通。输入cv.LINE_AA会使曲线更为平滑。
 
 **绘制直线**
+
 ```py
 cv.line(img, pt1, pt2, color, thickness, lineType)
 ```
@@ -188,6 +193,7 @@ cv.line(img, pt1, pt2, color, thickness, lineType)
 * `pt2`为终点坐标
 
 **绘制圆**
+
 ```py
 cv.circle(img, center, radius, color, thickness, lineType)
 ```
@@ -196,6 +202,7 @@ cv.circle(img, center, radius, color, thickness, lineType)
 * `radius`为半径
 
 **绘制矩形**
+
 ```py
 cv.rectangle(img, pt1, pt2, color, thickness, lineType)
 ```
@@ -206,6 +213,7 @@ cv.rectangle(img, pt1, pt2, color, thickness, lineType)
 > 通过rectangle画出来的矩形与图像边框平行
 
 **绘制椭圆弧**
+
 ```py
 cv.ellipse(img, center, axes, angle, startAngle, endAngle, color, thickness, lineType)
 ```
@@ -216,6 +224,7 @@ cv.ellipse(img, center, axes, angle, startAngle, endAngle, color, thickness, lin
 * `startAngle`和`endAngle`为圆弧起始位角度和终止角度（顺时针为正）
 
 **绘制多边形**
+
 ```py
 cv.polylines(img, pts, isClosed, color, thickness, lineType)
 ```
@@ -226,6 +235,7 @@ cv.polylines(img, pts, isClosed, color, thickness, lineType)
 > polylines也可以用于绘制多条直线。
 
 **绘制文字**
+
 ```py
 cv.putText(img, text, org, fontFace, fontScale, color, thickness, lineType)
 ```
@@ -312,7 +322,6 @@ cv.getTrackbarPos(trackbarname, winname)
 
 * `trackbarname` 跟踪条名称，字符串
 * `windowName` 窗口名称，字符串
-
 
 ## 3. Core Operations
 
@@ -464,6 +473,7 @@ cv.waitKey(0)
 `cv.getTickFrequency()` 获得时钟频率
 
 可以通过如下方式计算运行时间：
+
 ```py
 e1 = cv.getTickCount()
 # your code execution
@@ -475,13 +485,13 @@ time = (e2 - e1)/ cv.getTickFrequency()
 
 OpenCV默认使用优化代码，通过`cv.useOptimized()`查看。可以通过`cv.setUseOptimized(False)`关闭优化。
 
-
 **Ipython测量运行时间**
 
 Ipython提供魔术指令`%timeit`用来测量时间，他会将函数运行多次，并返回运行总时间。
 Ipython还提供了其他一系列魔术指令，非常方便。
 
 **提高代码效率的建议**
+
 * 避免在Python中使用循环
 * 尽量将算法矢量化
 * 利用缓存一致性？
@@ -553,7 +563,6 @@ cv.destroyAllWindows()
 ### 4.2 图像几何变换
 
 图像二维几何变换，本质上是将变换矩阵与像素位置相乘。变换矩阵大小有2\*3和3\*3两种大小，对应以下两种函数。2*3的变换矩阵是非齐次形式，它的齐次形式中最后一行为(0,0,1)。
-
 
 ```py
 cv.warpAffine(src, M, dsize)
@@ -642,9 +651,7 @@ M = cv.getPerspectiveTransform(pts1,pts2)
 
 > 教材："Computer Vision: Algorithms and Applications", Richard Szeliski
 
-
 翻转图片`cv.flip()`。
-
 
 ### 4.3 阈值化处理
 
@@ -712,7 +719,6 @@ cv.threshold(img,0,255,cv.THRESH_BINARY+cv.THRESH_OTSU)
 * `kernel` 卷积核，长宽为**奇数**
 
 > 图像深度是指用于存储一个像素的色彩信息所需要的bit，例如RGB888格式的深度为24
-
 
 **均值滤波（Averaging）**
 
@@ -1149,6 +1155,7 @@ cv.destroyAllWindows()
 
 > K邻近算法
 > 支持向量机
+
 ### K均值聚类
 
 ## 9. Computational Photography
@@ -1219,9 +1226,8 @@ while True:
 
 > 解释OpenCV-Python的工作原理
 
-
-
 ---
+
 参考链接
 1.https://docs.opencv.org/4.x/d6/d00/tutorial_py_root.html
 2.https://github.com/opencv/opencv/tree/4.x/doc/py_tutorials

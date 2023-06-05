@@ -5,7 +5,7 @@
 > 无人机仿真环境配置十分困难，甚至比开发困难。
 > 已知的开源仿真环境有如下：
 > 
-> 1. XTDrone 用过，很卡。有多种任务的示例代码
+> 1. XTDrone 有多种任务的示例代码
 > 2. Prometheus 阿木实验室开发 必须要买他的手柄，不愧是商家
 > 3. RflySim 北航可靠飞行控制组 基于Matlab和FlightGear，但我不是Matlab选手
 > 4. [Hello Sky - GAAS](https://gaas.gitbook.io/guide/)
@@ -161,7 +161,7 @@ cd ~/XTDrone/control/keyboard
 python3 multirotor_keyboard_control.py iris 1 vel
 ```
 
-强行关闭gazebo
+强行关闭 gazebo
 
 ```shell
 killall -9 gzclient
@@ -211,7 +211,7 @@ VINS-Fusion可以进行单目 + IMU, 双目 + IMU 或只有双目的多传感器
 > 
 > https://blog.csdn.net/xiaojinger_123/article/details/121517771?utm_source=app&app_version=4.20.0
 
-默认的仿真使用 iris_0 + 双目相机，配置文件如下
+默认的仿真使用 iris_0 + 双目相机，<mark>配置文件</mark>如下
 
 ```shell
 gedit ~/catkin_ws/src/VINS-Fusion/config/xtdrone_sitl/px4_sitl_stereo_imu_config.yaml
@@ -258,6 +258,43 @@ roslaunch vins rtabmap_vins.launch
 ```
 
 可以正常运行，稠密建图、八叉树地图。但是无人机位姿会有很大漂移，不知道为什么，之后可以直接用真值试试。
+
+## 2.5 ego_planner
+
+> 注意，ego_planner 需要使用 catkin_make 编译，catkin build 会产生一些链接问题。可以在其他工作空间用 catkin_make 编译 ego_planner。
+
+基于视觉的三维路径规划。
+
+<mark>先运行 VINS-Fusion，再运行 ego_planner</mark>：
+
+```shell
+// 切换相机位姿的坐标系方向
+cd ~/XTDrone/motion_planning/3d
+python ego_transfer.py iris 0
+// 启动 ego_planner
+roslaunch ego_planner single_uav.launch 
+```
+
+目标点切换：
+
+```xml
+
+```
+
+一塌糊涂...
+
+## 2.6 2D Laser SLAM
+
+对于简单的场景，2D SLAM 稳定性更强。使用 HectorSLAM。
+
+安装：
+
+```shell
+sudo apt install ros-noetic-hector-slam*
+sudo apt install ros-noetic-map-server
+```
+
+laser_2d 坐标系命名空间错误
 
 # 3 源码分析
 
