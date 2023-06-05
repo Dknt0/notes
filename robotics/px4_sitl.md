@@ -20,7 +20,7 @@
 
 PX4提供了比APM更完善的仿真功能，同时由于更自由的证书，更广泛地应用于学界和业界。
 
-由于在 Ubuntu 20.04 上安装 XTDrone 的偶然成功，我果断地放弃了APM，学习 PX4 SITL。
+由于在 Ubuntu 20.04 上安装 XTDrone 的偶然成功，我果断放弃了APM，学习 PX4 SITL。
 
 PX4 提供了在 Ubuntu 22.04 上对高版本 ROS 和 Gazebo 的支持，等把 SITL、MAVLink、SLAM 学明白了，就转战 Ubuntu 22.04。
 
@@ -30,6 +30,8 @@ PX4 提供了在 Ubuntu 22.04 上对高版本 ROS 和 Gazebo 的支持，等把 
 
 ## 2.1 MAVLink
 
+地面站通行协议大概不会直接写这个。
+
 ## 2.2 MAVSDK
 
 MAVSDK 是 MAVLink 的 C++ API，好像只支持PX4。
@@ -38,6 +40,6 @@ MAVSDK 是 MAVLink 的 C++ API，好像只支持PX4。
 
 ## 2.3 MAVROS
 
-不太懂这个包是干什么的，但XTDrone源码用的是这个。
+不太懂这个包是干什么的，但XTDrone源码用的是这个。没有官方 Tutorial。
 
 # 3 ORB SLAM

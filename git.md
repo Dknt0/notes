@@ -5,30 +5,30 @@
 # 1 本地配置
 
 1. 本地创建ssh key
+   
+   ```bash
+   $ ssh-keygen -t rsa -C "your_email@youremail.com"
+   ```
 
-    ```bash
-    $ ssh-keygen -t rsa -C "your_email@youremail.com"
-    ```
+2. 进入`~/.ssh/id_rsa.pub`，复制文件中的内容。
 
-1. 进入`~/.ssh/id_rsa.pub`，复制文件中的内容。
+3. 进入github账户配置（Account Settings），添加SSH key，粘贴复制的key。
 
-2. 进入github账户配置（Account Settings），添加SSH key，粘贴复制的key。
-
-3. 在终端中输入如下命令，测试是否验证成功。
-
-    ```bash
-    $ ssh -T git@github.com
-    ```
-
+4. 在终端中输入如下命令，测试是否验证成功。
+   
+   ```bash
+   $ ssh -T git@github.com
+   ```
+   
     输入yes，若验证成功，会看到You've successfully authenticated, but GitHub does not provide shell access.
 
-4. 设置用户名和邮箱
-
-    ```bash
-    $ git config --global user.name "your name"
-    $ git config --global user.email "your_email@youremail.com"
-    ```
-
+5. 设置用户名和邮箱
+   
+   ```bash
+   $ git config --global user.name "your name"
+   $ git config --global user.email "your_email@youremail.com"
+   ```
+   
     设置完成后，即可向github远程仓库上传自己的项目。
 
 # 2 项目管理

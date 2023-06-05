@@ -1,4 +1,4 @@
-# C++多线程
+# C++ 多线程
 
 > 参考:
 > 
@@ -129,6 +129,38 @@ m1.unlock();
 ```cpp
 #include <future>
 // 创建 promise
-auto prom = std::promise<bool>();
-auto future = 
+std::promise<bool> prom = std::promise<bool>();
+std::future<bool> future = prom.get_future();
+
+// 等待 future
+if (future.wait_for(seconds(3)) == std::future_status::timeout) {
+    cerr << "No autopilot found" << endl;
+    return;
+}
+
+// 阻塞，等待 future
+future.get();
+```
+
+<mark>注意</mark>：C++ 类内非静态成员函数不能作为线程函数使用，会报错。解决方案主要有两种：
+
+1. 使用匿名函数，引用传参，这样可以在匿名函数中访问类成员变量
+
+2. 编写如下静态成员函数，传入 this 指针。尽量传递指针，报错少。
+
+```cpp
+// 这个例子是 pthread 库的，thread 库返回值为 void
+void * Test::insert_pth(void* __this)
+{
+    Test * _this =(Test *)__this;
+    sleep(2);
+    _this->sum+=1;
+    printf("%d insert.....\n",_this->sum);
+}
+```
+
+一种非阻塞式等待`future`的方法：
+
+```shell
+
 ```

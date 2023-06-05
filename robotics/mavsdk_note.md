@@ -104,7 +104,7 @@ target_link_libraries(target
 
 当三秒内没有受到心跳信息时，认为连接中断。
 
-> udp://:14540 是 PX4 默认的端口，虽然在我编译的固件里是另一个。
+> udp://:14540 是 PX4 默认的端口，虽然在我编译的固件(XTDrone)里是另一个。
 
 地面站可以使用 server 模式或 client 模式。
 
