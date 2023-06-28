@@ -1,6 +1,6 @@
 # DDS 数据分发服务
 
-DDS (Data Distribution Service) 是 2004 年由对象管理组织 OMG 发布的，专门为实时系统设计的数据分发/订阅标准，广泛应用于国防、民航、工控等领域。
+DDS (Data Distribution Service) 是 2004 年由对象管理组织 OMG 发布的，专门为**实时系统**设计的数据分发/订阅标准，广泛应用于国防、民航、工控等领域。
 
 > 其的分布式通信协议：
 > 
@@ -8,7 +8,7 @@ DDS (Data Distribution Service) 是 2004 年由对象管理组织 OMG 发布的�
 > 
 > SOME/IP - 车载以太网协议。
 
-在 IOS 七层模型中的位置如下图。
+在 OSI 七层模型中的位置如下图。
 
 <img title="" src="file:///home/dknt/Documents/notes/robotics/image/Screenshot%20from%202023-06-26%2020-47-08.png" alt="" data-align="center" width="389">
 
@@ -16,7 +16,7 @@ DDS (Data Distribution Service) 是 2004 年由对象管理组织 OMG 发布的�
 
 DDS 核心标准：DDS Specification —— API 标准，保证不同 DDS 实现的应用程序的可移植性。DDSI-RTPS Specification —— 协议标注，保证不同 DDS 实现的互操作性。
 
-QoS
+DDS 局限：对设备性能要求较高。
 
 现在 ROS 2 支持的 DDS 供应商有 eProsima’s Fast DDS（开源）, RTI’s Connext DDS, Eclipse Cyclone DDS（开源）, and GurumNetworks GurumDDS。默认使用 eProsima’s Fast DDS。
 

@@ -4,7 +4,9 @@ Gazebo Garden是2023.4.11为止最新版的Gazebo。与Gazebo Classical不同，
 
 Gazebo Garden可以安装在Ubuntu 20.04以上的系统中，但只能同ROS2 Hamble以上的版本同时使用，在我的机器（20.04）上无法使用ROS与Gz交互，因此需要调用Gazebo API实现驱动器控制、传感器信息获取。如果需要，我可以将获取的传感器信息通过ROS1 Topic发送出去。
 
-## 0. 下载与测试
+## 0. 准备工作
+
+## 0.1 下载与测试
 
 通过命令行下载：
 
@@ -30,6 +32,27 @@ gz sim shapes.sdf -v 4
 ```shell
 sudo apt remove gz-garden && sudo apt autoremove
 ```
+
+## 0.2 GPU OpenGL
+
+Ubuntu 下 OpenGL 默认使用 Mesa，不是显卡驱动的 OpenGL，导致画面显示不正常。这个问题会出现在任何一款基于 OpenGL 的软件的使用过程中，例如 Unity 3d。
+
+要解决这个问题，首先要正确安装显卡驱动。之后，在命令行中切换到 nvidia。
+
+```shell
+sudo prime-select nvidia
+```
+
+在`~/.bashrc`中输入如下内容：
+
+```shell
+export __NV_PRIME_RENDER_OFFLOAD=1
+export __GLX_VENDOR_LIBRARY_NAME=nvidia
+```
+
+之后运行 gz，在 nvidia-smi 输出中可以看到 gz sim。
+
+
 
 ## 1. 机器人与世界
 
