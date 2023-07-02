@@ -4,7 +4,7 @@
 > 
 > https://blog.csdn.net/qq_38410730/article/details/103637778
 > 
-> [C++ lambda表达式详细讲解2-隐式捕获与显式捕获](https://blog.csdn.net/readyone/article/details/110948770)
+> [C++ lambda表达式详细讲解](https://blog.csdn.net/readyone/article/details/110948770)
 > 
 > Dknt 2023.6
 
