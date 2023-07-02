@@ -2,9 +2,13 @@
 
 > ROS 2 Humble 笔记
 > 
+> 参考：
+> 
+> https://docs.ros.org/en/humble/
+> 
 > Dknt 2023.6
 
-ROS 2 Humble 是 ROS 2 的第一个 LTS 发行版，运行在 Ubnutu 22.04 系统上。ROS 2 与 ROS 1 最大的区别在于底层通信协议的改变 —— DDS。ROS 2 可以运行在裸机上。
+ROS 2 Humble 是 ROS 2 的第一个 LTS 发行版，运行在 Ubnutu 22.04 系统上。ROS 2 与 ROS 1 最大的区别在于底层通信协议的改变 —— DDS。ROS 2 是实时系统。可以运行在裸机上。跨平台。
 
 ROS 2 Humble 也可以通过源码编译运行在其他系统上。
 
@@ -156,11 +160,29 @@ ROS 2 的启动文件有三种，XML、Python、YAML。Python 最为方便。
 
 1
 
-# _ 开发
+# 依赖管理
 
-## _. colcon 工具
+rosdep
 
-`colcon`是 catkin 等 ROS 编译工具的迭代版本。
+1
+
+# _1 开发
+
+ROS 2 编程与 ROS 1 有很大区别（C++）。用到了一些高级语法特性。
+
+ROS 2 的一个进程中可以运行多个节点。在 C++ 中，节点被抽象成一个类，我们可以继承`rclcpp::Node`类，来建立自己的节点，实现自己的功能。
+
+在节点基类中实现了创建发布者、服务器等功能，通过`this->create_*()`来创建，不需要“句柄”。这些函数返回一个共享指针，因此在我们的节点类需要创建一个对应话题/服务类型的共享指针。
+
+回调函数可以写为节点类的成员函数，注册时需要使用`std::bind`进行适配，详见例程。
+
+ROS 2 C++ 编程中大量使用了共享指针`std::shared_ptr<T>`。
+
+在 ROS 2 源码中提供了多种通信的编程实现方式，可以根据实际情况选用最合适的。
+
+## _1.1 colcon 工具
+
+`colcon`是 `catkin`, `ament` 等 ROS 编译工具的集成。
 
 ROS 2 工作空间目录结构：
 
@@ -174,3 +196,432 @@ ROS 2 工作空间目录结构：
     ├── ros2_pkg
         └── 
 ```
+
+编译需要在工作空间根目录下进行：
+
+```shell
+colcon build --symlink-install
+colcon build --packages-select package_name # 编译某个包
+```
+
+`--symlink-install`将 python 文件移动到 install 目录下。
+
+`setup.bash`位于`install`目录下，执行这个脚本，会把包中所有可执行文件和库文件添加到目录中。执行`setup.bash`会将当前包以及他的以来包添加到环境，`local_setup.bash`只将当前包添加到环境。
+
+`package.xml`文件用于定义一个包。
+
+使用如下命令按照模板创建一个包。
+
+```shell
+ros2 pkg create <package_name>
+```
+
+`colcon_cd`命令用于跳转到指定包目录，需要预先将这个命令加入到环境变量中。
+
+```shell
+echo "source /usr/share/colcon_cd/function/colcon_cd.sh" >> ~/.bashrc
+echo "export _colcon_cd_root=/opt/ros/humble/" >> ~/.bashrc
+echo "source /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash" >> ~/.bashrc
+```
+
+## _1.2 工作空间与 ROS 包
+
+如果在包目录下有一个叫`COLCON_IGNORE`的空文件，那么这个包不会被 colcon 编译。
+
+在工作空间根目录下输入如下指令，检查依赖
+
+```shell
+rosdep install -i --from-path src --rosdistro humble -y
+```
+
+ROS 2 包分为两类：CMake 和 Python。ROS 2 包使用 ament 作为编译系统，使用 colcon 作为编译工具。
+
+### _1.2.1 CMake 包
+
+用于管理 C++ 项目。
+
+CMake 包最小要求：
+
+```shell
+CMakeLists.txt # CMake 编译文件
+include/<package_name>/ # 头文件
+package.xml # 包元信息
+src/ # 源文件
+```
+
+创建 CMake 包的指令：
+
+```shell
+ros2 pkg create --build-type ament_cmake <package_name>
+```
+
+创建包同时创建节点源文件：
+
+```shell
+ros2 pkg create --build-type ament_cmake --node-name my_node <package_name>
+```
+
+创建包同时添加依赖：
+
+```shell
+ros2 pkg create --build-type ament_cmake <package_name> --dependencies rclcpp std_msgs
+```
+
+### _1.2.2 Python 包
+
+用于管理 Python 项目
+
+1
+
+## _1.3 话题 Topic
+
+ROS 2 C++ 中的节点为`rclcpp::Node`的派生类，这种方式可以让一个进程中运行多个节点（由此，进程与节点不再等价）。ROS 2 也支持与 ROS 1 类似的编程方式，这时一个进程之能运行一个节点。推荐使用新方法。
+
+### _1.3.1 自定义话题
+
+话题定义文件存放在 ROS 包 msg 目录下。话题可以导入其他 underlay 中已经定义的话题。
+
+msg/Sphere.msg 文件
+
+```shell
+geometry_msgs/Point center
+float64 radius
+```
+
+修改 package.xml
+
+```xml
+<depend>geometry_msgs</depend>
+<buildtool_depend>rosidl_default_generators</buildtool_depend>
+<exec_depend>rosidl_default_runtime</exec_depend>
+<member_of_group>rosidl_interface_packages</member_of_group>
+```
+
+修改 CMakeLists.txt
+
+```cmake
+find_package(geometry_msgs REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+# 生成消息库
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/Sphere.msg"
+  DEPENDENCIES geometry_msgs # Add packages that above messages depend on, in this case geometry_msgs for Sphere.msg
+)
+```
+
+### _1.3.2 C++ Publisher
+
+源码 publisher_member_function.cpp
+
+```cpp
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/string.hpp"
+// chrono 神奇的运算符重载，可以直接写 500ms 这样的字面值
+using namespace std::chrono_literals;
+// ROS 2 中的节点需要继承自节点基类
+class MinimalPublisher : public rclcpp::Node {
+public:
+    // 构造函数  列表初始化 : Node(节点名)
+    MinimalPublisher() : Node("minimal_publisher"), conut_(0) {
+        // 话题发布者，第一个参数为话题名，第二个参数是 QoS，这里代表 buffer 大小
+        publisher_ = this->create_publisher<std_msgs::msg::String>("topic", 10);
+        // 初始化定时器回调函数 这里用了 std::bind
+        timer_ = this->create_wall_timer(500ms, std::bind(&MinimalPublisher::timer_callback, this));
+    }
+private:
+    // 回调函数
+    void timer_callback() {
+        auto message = std_msgs::msg::String();
+        message.data = "Hello, world! " + std::to_string(conut_++);
+        RCLCPP_INFO(this->get_logger(), "Publishing: '%s'", message.data.c_str());
+        publisher_->publish(message);
+    }
+    // 定时器 共享指针
+    rclcpp::TimerBase::SharedPtr timer_;
+    // 发布者 共享指针
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher_;
+    // 计数器
+    size_t conut_;
+};
+
+int main(int argc, char **argv) {
+    // 初始化 ROS 2
+    rclcpp::init(argc, argv);
+    // 开始处理节点数据 循环处理
+    rclcpp::spin(std::make_shared<MinimalPublisher>());
+    // 终止进程
+    rclcpp::shutdown();
+    return 0;
+}
+```
+
+修改 package.xml
+
+```xml
+<depend>rclcpp</depend>
+<depend>std_msgs</depend>
+```
+
+修改 CMakeLists.txt
+
+```cmake
+# 导包
+find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
+# 添加可执行文件
+add_executable(talker src/publisher_member_function.cpp)
+# ament 链接配置
+ament_target_dependencies(talker rclcpp std_msgs)
+# 下载位置
+install(TARGETS
+  talker
+  DESTINATION lib/${PROJECT_NAME}
+)
+```
+
+> 注意：存在其他编程方式用 C++ 实现话题通信，详见源码
+
+### _1.3.3 C++ Subscriber
+
+源码 subscriber_member_function.cpp
+
+```cpp
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/string.hpp"
+// std::bind 占位符
+using std::placeholders::_1;
+// 节点派生类
+class MinimalSubscriber : public rclcpp::Node {
+public:
+    // 构造函数 Node(节点名)
+    MinimalSubscriber() : Node("minimal_subscriber") {
+        // "话题名"  QoS 为 buffer 长度
+        subscription_ = this->create_subscription<std_msgs::msg::String>("topic", 10,
+            std::bind(&MinimalSubscriber::topic_callback, this, _1));
+    }
+private:
+    // 回调函数，注意参数类型
+    void topic_callback(const std_msgs::msg::String &msg) const {
+        RCLCPP_INFO(this->get_logger(), "I heared: '%s'", msg.data.c_str());
+    }
+    // 收听者
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr subscription_;
+};
+
+int main(int argc, char **argv) {
+    // 初始化 ROS2
+    rclcpp::init(argc, argv);
+    // 处理节点信息
+    rclcpp::spin(std::make_shared<MinimalSubscriber>());
+    // 终止进程
+    rclcpp::shutdown();
+    return 0;
+}
+```
+
+修改 package.xml
+
+```xml
+<depend>rclcpp</depend>
+<depend>std_msgs</depend>
+```
+
+修改 CMakeLists.txt
+
+```cmake
+# 导包
+find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
+# 添加可执行文件
+add_executable(listener src/subscriber_member_function.cpp)
+# ament 链接配置
+ament_target_dependencies(listener rclcpp std_msgs)
+# 下载位置
+install(TARGETS
+  listener
+  DESTINATION lib/${PROJECT_NAME}
+)
+```
+
+### _1.3.4 Python P & S
+
+1
+
+## _1.4 服务 Service
+
+1
+
+### _1.4.1 自定义服务
+
+服务定义文件存放在 ROS 包 srv 目录下
+
+srv/AddThreeInts.srv 文件
+
+```shell
+int64 a
+int64 b
+int64 c
+---
+int64 sum
+```
+
+修改 package.xml
+
+```xml
+<buildtool_depend>rosidl_default_generators</buildtool_depend>
+<exec_depend>rosidl_default_runtime</exec_depend>
+<member_of_group>rosidl_interface_packages</member_of_group>
+```
+
+修改 CMakeLists.txt
+
+```cmake
+find_package(rosidl_default_generators REQUIRED)
+# 生成服务库
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "srv/AddThreeInts.srv"
+  DEPENDENCIES # Add packages that above messages depend on, in this case geometry_msgs for Sphere.msg
+)
+```
+
+### _1.4.2 C++ Server
+
+源码 add_two_ints_server.cpp
+
+```cpp
+#include "rclcpp/rclcpp.hpp"
+#include "example_interfaces/srv/add_two_ints.hpp"
+
+// 回调函数 注意参数格式
+void add(const std::shared_ptr<example_interfaces::srv::AddTwoInts::Request> request,
+         std::shared_ptr<example_interfaces::srv::AddTwoInts::Response> response) {
+    response->sum = request->a + request->b;
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Incoming request\na: %ld" " b: %ld", request->a, request->b);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "sending back response: [%ld]", (long int)response->sum);
+}
+
+int main(int argc, char **argv) {
+    // 初始化 ROS
+    rclcpp::init(argc, argv);
+    // 实例化节点，参数为节点名  共享指针
+    std::shared_ptr<rclcpp::Node> node = rclcpp::Node::make_shared("add_two_ints_server");
+    // 创建服务器  共享指针
+    rclcpp::Service<example_interfaces::srv::AddTwoInts>::SharedPtr service =
+        node->create_service<example_interfaces::srv::AddTwoInts>("add_two_ints", &add);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Ready to add two ints.");
+    // 处理数据
+    rclcpp::spin(node);
+    // 终止进程
+    rclcpp::shutdown();
+    return 0;
+}
+```
+
+通过`node`对象创建的服务器会与他绑定，当我们将`node`加入`spin`时，会同时启动服务。
+
+修改 package.xml
+
+```xml
+<depend>rclcpp</depend>
+<depend>example_interfaces</depend>
+```
+
+修改 CMakeLists.txt
+
+```cmake
+# 导包
+find_package(rclcpp REQUIRED)
+find_package(example_interfaces REQUIRED)
+# 添加可执行文件
+add_executable(server src/add_two_ints_server.cpp)
+# ament 链接配置
+ament_target_dependencies(server rclcpp example_interfaces)
+# 下载位置
+install(TARGETS
+  server
+  DESTINATION lib/${PROJECT_NAME}
+)
+```
+
+### _1.4.3 C++ Client
+
+源码 add_two_ints_server.cpp
+
+```cpp
+#include "rclcpp/rclcpp.hpp"
+#include "example_interfaces/srv/add_two_ints.hpp"
+
+// 神奇的 chrono 字面值
+using namespace std::chrono_literals;
+
+int main(int argc, char **argv) {
+    // 初始化 ROS
+    rclcpp::init(argc, argv);
+    // 参数数量错误
+    if (argc != 3) {
+        RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "usage: add_two_ints_client X Y");
+        return 1;
+    }
+    // 节点  共享指针
+    std::shared_ptr<rclcpp::Node> node = rclcpp::Node::make_shared("add_two_ints_client");
+    // 客户端  共享指针
+    rclcpp::Client<example_interfaces::srv::AddTwoInts>::SharedPtr client =
+        node->create_client<example_interfaces::srv::AddTwoInts>("add_two_ints");
+    // 创建请求对象，设置请求值
+    auto request = std::make_shared<example_interfaces::srv::AddTwoInts::Request>();
+    request->a = atoll(argv[1]);
+    request->b = atoll(argv[2]);
+    // 等待服务
+    while (!client->wait_for_service(1s)) {
+        if (!rclcpp::ok()) {
+            RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting.");
+            return 0;
+        }
+        RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not avaible, waiting again...");
+    }
+    // 申请服务，异步方式获取结果
+    auto result = client->async_send_request(request);
+    // 等待服务器返回结果  异步并发
+    if (rclcpp::spin_until_future_complete(node, result) == rclcpp::FutureReturnCode::SUCCESS) {
+        RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Sum: %ld", result.get()->sum);
+    }
+    else {
+        RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Failed to call service add_two_ints");
+    }
+    // 终止进程
+    rclcpp::shutdown();
+    return 0;
+}
+```
+
+修改 package.xml
+
+```xml
+<depend>rclcpp</depend>
+<depend>example_interfaces</depend>
+```
+
+修改 CMakeLists.txt
+
+```cmake
+# 导包
+find_package(rclcpp REQUIRED)
+find_package(example_interfaces REQUIRED)
+# 添加可执行文件
+add_executable(client src/add_two_ints_client.cpp)
+# ament 链接配置
+ament_target_dependencies(client rclcpp example_interfaces)
+# 下载位置
+install(TARGETS
+  client
+  DESTINATION lib/${PROJECT_NAME}
+)
+```
+
+### _1.4.4 Python S & C
+
+1
+
+## _1.5 动作 Action
+
+1

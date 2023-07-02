@@ -100,3 +100,10 @@ $ git branch -M main
 $ git remote add origin git@github.com:username/repository.git
 $ git push -u origin main
 ```
+
+2023.6 重装系统后，没有办法 push。解决方案：
+
+```shell
+git remote -v
+git remote set-url origin git@github.com:USERNAME/REPONAME.git
+```
