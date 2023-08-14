@@ -14,7 +14,7 @@ ROS 2 Humble 也可以通过源码编译运行在其他系统上。
 
 > 先大概记录下内容，再分章节总结笔记
 
-# 命令行
+# 1 命令行
 
 * 运行
 
@@ -154,11 +154,39 @@ Debug # debug 信息
 ros2 run <pkg_name> <node_name> --ros-args --log-level WARN
 ```
 
+* 包管理
+
+创建新功能包
+
+```shell
+ros2 pkg create <package_name> --build-type ament_cmake [--dependencies rclcpp ...]
+```
+
 # 启动
 
 ROS 2 的启动文件有三种，XML、Python、YAML。Python 最为方便。
 
+Python 启动文件位于 package/launch 目录下
+
 1
+
+示例：
+
+```python
+
+```
+
+修改 CMakeLists.txt 文件
+
+```cmake
+
+```
+
+启动命令：
+
+```shell
+
+```
 
 # 依赖管理
 
@@ -197,7 +225,7 @@ ROS 2 工作空间目录结构：
         └── 
 ```
 
-编译需要在工作空间根目录下进行：
+编译需要在工作空间**根目录**下进行：
 
 ```shell
 colcon build --symlink-install
@@ -267,11 +295,17 @@ ros2 pkg create --build-type ament_cmake --node-name my_node <package_name>
 ros2 pkg create --build-type ament_cmake <package_name> --dependencies rclcpp std_msgs
 ```
 
+基于 ament 的 CMake 总结：
+
+1
+
 ### _1.2.2 Python 包
 
 用于管理 Python 项目
 
-1
+```shell
+ros2 pkg create --build-type ament-python <package_name>
+```
 
 ## _1.3 话题 Topic
 
@@ -308,6 +342,16 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   DEPENDENCIES geometry_msgs # Add packages that above messages depend on, in this case geometry_msgs for Sphere.msg
 )
 ```
+
+按官方文档所述，话题/服务定义必须使用 cmake 编译，且最好放在单独的包中。但也可以在同一个包中定义并使用，这时需要在 CMakeLists.txt 中添加如下指令：
+
+```cmake
+rosidl_get_typesupport_target(cpp_typesupport_target
+  ${PROJECT_NAME} rosidl_typesupport_cpp)
+target_link_libraries(target_name "${cpp_typesupport_target}")
+```
+
+自定义话题可以使用 underlay 中定义过的话题，也可以使用这些话题的数组。为此，必须在 package.xml 中添加依赖，在 CMakeLists.txt 生成话题库时添加依赖，编写代码时加入 underlay 的头文件。详见 https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Single-Package-Define-And-Use-Interface.html
 
 ### _1.3.2 C++ Publisher
 
@@ -445,7 +489,15 @@ install(TARGETS
 
 ### _1.3.4 Python P & S
 
-1
+Python 中模块导入的问题。
+
+Python 默认会从当前执行文件目录下搜索导入的包，但 ROS 2 在安转时，会将节点代码拷贝到 install 目录下，造成包导入报错。可以通过添加路径的方式解决，在代码前添加如下两行：
+
+```python
+import sys
+sys.path.append("/home/dknt/Projects/uav_sim/src/yolo_detector/yolo_detector")
+import detect
+```
 
 ## _1.4 服务 Service
 
@@ -482,6 +534,14 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/AddThreeInts.srv"
   DEPENDENCIES # Add packages that above messages depend on, in this case geometry_msgs for Sphere.msg
 )
+```
+
+类似于话题，在同一个包中定义和使用服务，需要在 CMakeLists.txt 中添加如下命令：
+
+```cmake
+rosidl_get_typesupport_target(cpp_typesupport_target
+  ${PROJECT_NAME} rosidl_typesupport_cpp)
+target_link_libraries(target_name "${cpp_typesupport_target}")
 ```
 
 ### _1.4.2 C++ Server
@@ -594,6 +654,8 @@ int main(int argc, char **argv) {
 }
 ```
 
+> 客户端调用服务时使用异步方式，结果从`future`中获取。这里没有定义一个新的节点类。
+
 修改 package.xml
 
 ```xml
@@ -622,6 +684,119 @@ install(TARGETS
 
 1
 
-## _1.5 动作 Action
+## _1.5 参数 Parameter
+
+ROS 2 中参数属于节点，不存在参数服务器。
+
+节点可以在程序中设置，也可以在启动文件中设置。
+
+### _1.5.1 C++ 参数配置
+
+ROS 2 首先要在节点代码中声明参数，之后才可以设置它。
+
+源码 cpp_parameters_node.cpp
+
+```cpp
+#include "rclcpp/rclcpp.hpp"
+
+using namespace std::chrono_literals;
+
+class ParamNode : public rclcpp::Node {
+public:
+    ParamNode() : Node("param_test"), count_(0) {
+        // 定义参数
+        this->declare_parameter("my_param", "Hello world");
+        timer_ = this->create_wall_timer(1000ms, std::bind(&ParamNode::timer_callback, this));
+    }
+private:
+    void timer_callback() {
+        std::string my_param = this->get_parameter("my_param").as_string();
+        RCLCPP_INFO(this->get_logger(), "Parameter: %s", my_param.c_str());
+        std::vector<rclcpp::Parameter> all_new_parameters{rclcpp::Parameter("my_param", (std::string("Hello world") + " " + std::to_string(count_)))};
+        // 设置参数
+        this->set_parameters(all_new_parameters);
+        count_++;
+    rclcpp::TimerBase::SharedPtr timer_;
+    int count_;
+};
+
+int main(int argc, char **argv) {
+    rclcpp::init(argc, argv);
+    rclcpp::spin(std::make_shared<ParamNode>());
+    rclcpp::shutdown();
+
+    return 0;
+}
+```
+
+可以为参数添加描述，声明过程如下：
+
+```cpp
+ParamNode() : Node("param_test"), count_(0) {
+    // 定义参数描述
+    auto param_desc = rcl_interfaces::msg::ParameterDescriptor{};
+    param_desc.description = "This is a parameter";
+
+    // 定义参数
+    this->declare_parameter("my_param", "Hello world", param_desc);
+    timer_ = this->create_wall_timer(1000ms, std::bind(&ParamNode::timer_callback, this));
+}
+```
+
+### _1.5.2 Python 参数配置
 
 1
+
+### _1.5.2 启动文件参数配置
+
+1
+
+## _1.6 动作 Action
+
+1
+
+## _1.7 插件 Plugin
+
+插件是一种 C++ 动态链接库，使用插件时，用户不需要预先知道库中的类和库的头文件。插件有助于应用程序的扩充、模块化，同时不需要提供源码。
+
+插件编写依赖于`pluginlib`。
+
+编写一个基类的头文件，基类是虚类，包含一个无参数的构造函数，一个虚析构函数，其余成员函数全部为纯虚函数。
+
+> 详见 https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Pluginlib.html
+> 
+> 这个是高级主题，暂时不会用到。
+
+# _2 常用功能包
+
+## _2.1 std_msgs
+
+1
+
+## _2.2 geometry_msgs
+
+1
+
+## _2.3 senser_msgs
+
+1
+
+## _2.4 tf2
+
+1
+
+# _3 常用工具
+
+## _3.1 cv_bridge
+
+图像话题转 OpenCV 矩阵。
+
+```cpp
+
+```
+
+# note
+
+应该整理一套可以直接拷贝的 ros 模板
+
+C++ 和 Python 的都需要

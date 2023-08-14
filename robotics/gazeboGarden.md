@@ -1,8 +1,10 @@
 # Gazebo Garden
 
-Gazebo Garden是2023.4.11为止最新版的Gazebo。与Gazebo Classical不同，新版Gazebo默认使用OpenGL作为3D显示框架，相比于ogre库，效率更高（我认为，效果也更好）。
+> Dknt 2023.4
 
-Gazebo Garden可以安装在Ubuntu 20.04以上的系统中，但只能同ROS2 Hamble以上的版本同时使用，在我的机器（20.04）上无法使用ROS与Gz交互，因此需要调用Gazebo API实现驱动器控制、传感器信息获取。如果需要，我可以将获取的传感器信息通过ROS1 Topic发送出去。
+Gazebo Garden 是2023.4.11 为止最新版的Gazebo。与Gazebo Classical (ogre)不同，新版Gazebo默认使用OpenGL作为3D显示框架。
+
+> Gazebo Garden可以安装在Ubuntu 20.04以上的系统中，但只能同 ROS 2 Hamble 以上的版本同时使用，在我的机器（20.04）上无法使用 ROS 与 Gz 交互，因此需要调用 Gazebo API 实现驱动器控制、传感器信息获取。如果需要，我可以将获取的传感器信息通过 ROS1 Topic 发送出去。
 
 ## 0. 准备工作
 
@@ -35,7 +37,7 @@ sudo apt remove gz-garden && sudo apt autoremove
 
 ## 0.2 GPU OpenGL
 
-Ubuntu 下 OpenGL 默认使用 Mesa，不是显卡驱动的 OpenGL，导致画面显示不正常。这个问题会出现在任何一款基于 OpenGL 的软件的使用过程中，例如 Unity 3d。
+Ubuntu 下 OpenGL 默认使用 Mesa，不是显卡驱动中的 OpenGL，导致画面显示不正常，速度慢。这是一个普遍的问题，任何基于 OpenGL 的软件都会遇到。
 
 要解决这个问题，首先要正确安装显卡驱动。之后，在命令行中切换到 nvidia。
 
@@ -51,8 +53,6 @@ export __GLX_VENDOR_LIBRARY_NAME=nvidia
 ```
 
 之后运行 gz，在 nvidia-smi 输出中可以看到 gz sim。
-
-
 
 ## 1. 机器人与世界
 
@@ -166,7 +166,7 @@ SDF是gz中世界的格式，也可以是机器人的格式。
 连杆惯性参数设置
 
 ```xml
-    <inertial> <!--inertial properties of the link mass, inertia matix-->
+    <inertial> <!--inertial properties of the link mass, inertia matrix-->
         <mass>1.14395</mass>
         <inertia>
             <ixx>0.095329</ixx>
@@ -299,3 +299,19 @@ gz topic -t "/cmd_vel" -m gz.msgs.Twist -p "linear: {x: 0.5}, angular: {z: 0.05}
 ```shell
 gz topic -e -t /keyboard/keypress
 ```
+
+# _ Gazebo 与 ROS 2 通信
+
+Gazebo 与 ROS 2 之间通过`ros_gz_bridge`包进行通信。需要给出 ros 和 gz 中的话题名，以及这个话题对应在 ros 和 gz 中的类型。
+
+注意需要下载与 ROS 和 gz 版本对应的包，gz Garden 对应的包为 gz 而不是 ign。
+
+```shell
+sudo apt-get install ros-humble-ros-gz-bridge
+```
+
+支持的话题类型见[这个文档](https://github.com/gazebosim/ros_gz/blob/ros2/ros_gz_bridge/README.md)
+
+可以将话题信息保存在`yaml`文件中。
+
+可以写一个 C++ 节点用于转发话题。

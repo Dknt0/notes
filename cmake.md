@@ -55,10 +55,8 @@ target_link_libraries( test hello_shared )
 
 ```cmake
 # 添加Eigen库路径
-include_directories( "/usr/include/eigen3" )
+include_directories( "/usr/include/eigen3" ) 
 ```
-
-#
 
 常用库的添加方式：
 

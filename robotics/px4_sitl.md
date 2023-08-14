@@ -1,45 +1,57 @@
 # PX4 SITL 仿真
 
-> 环境：
+> 软件版本：
 > 
-> Ubuntu 20.04
+> Ubuntu 22.04
 > 
-> PX4-Autopilot v1.13
+> ROS2 Humble
+> 
+> Gazebo Garden
 > 
 > 参考：
 > 
-> [PX4 User Guide](https://docs.px4.io/main/en/)
+> [Gazebo Simulation | PX4 User Guide](https://docs.px4.io/main/en/sim_gazebo_gz/)
 > 
-> [XTDrone使用文档 · Yuque](https://www.yuque.com/xtdrone/manual_cn)
+> [Gazebo](https://gazebosim.org/docs/garden/ros2_integration)
 > 
-> Dknt 2022.4.22
+> Dknt 2023.7
 
-# 0 环境搭建
+# 0 环境配置
 
-## 0.1 PX4 SITL 的失而复得
+略，哈哈哈^_^
 
-PX4提供了比APM更完善的仿真功能，同时由于更自由的证书，更广泛地应用于学界和业界。
+# 1 仿真启动
 
-由于在 Ubuntu 20.04 上安装 XTDrone 的偶然成功，我果断放弃了APM，学习 PX4 SITL。
+我没有找到启动仿真的 launch 文件，官网上是通过运行一个可执行文件实现的启动。位置如下:
 
-PX4 提供了在 Ubuntu 22.04 上对高版本 ROS 和 Gazebo 的支持，等把 SITL、MAVLink、SLAM 学明白了，就转战 Ubuntu 22.04。
+```shell
+PX4-Autopilot/build/px4_sitl_default/bin/px4
+```
 
-安装过程见 XTDrone 笔记。
+可以通过这个程序创建一个新仿真，或向已经运行的仿真中添加一架新无人机。
 
-# 2 MAVLink 协议
+# 2 仿真场景搭建
 
-## 2.1 MAVLink
+之间将场景文件添加到场景文件夹下。路径：
 
-地面站通行协议大概不会直接写这个。
+```shell
+PX4-Autopilot/Tools/simulation/gz/worlds
+```
 
-## 2.2 MAVSDK
+# 3 创建新无人机
 
-MAVSDK 是 MAVLink 的 C++ API，好像只支持PX4。
+参考：[Gazebo Simulation | PX4 User Guide](https://docs.px4.io/main/en/sim_gazebo_gz/#adding-new-worlds-and-models)
 
-使用 MAVSDK 可以达到我预期的控制效果。
+# _ MAVLINK UDP Broadcast
 
-## 2.3 MAVROS
+手机、平板上 QGC 的虚拟遥感可以模拟真实遥控器控制仿真中的无人机，为此需要在 SITL 运行时打开 MAVLINK 的网络广播。方法如下：
 
-不太懂这个包是干什么的，但XTDrone源码用的是这个。没有官方 Tutorial。
+修改`PX4/build/px4_sitl_default/etc/init.d-posix/px4-rc.mavlink`文件中 mavlink 启动命令如下：
 
-# 3 ORB SLAM
+```shell
+mavlink start -x -u $udp_gcs_port_local -r 4000000 -f -p
+```
+
+增加 -p 参数。
+
+然后将运行仿真的电脑和手机连接到同一路由器下，就可以控制了。

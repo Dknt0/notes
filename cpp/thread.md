@@ -106,6 +106,8 @@ std::thread t1(func, 1);
 t1.join();
 ```
 
+> 参数必须是右值？
+
 promise future 用于实现线程异步并发
 
 ## 2.2 mutex 互斥锁

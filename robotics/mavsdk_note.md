@@ -11,6 +11,8 @@ MAVSDK 是一个为PX4开发的，高性能的、可靠的 MAVLink C++ 库，已
 类似的 MAVLink 通信方法有 dronesdk (Python), MAVROS。 C++ 最靠谱。
 
 > 事实证明，APM 飞控也可以用 MAVSDK。可能有未知的 bug。
+> 
+> ROS 2 中没有 MAVROS 库，需要编译一个新的包。所以在 DDS 通信不必要时， MAVSDK 是最好的选择，与版本无关。
 
 # 1 MAVSDK 基础编程
 
@@ -64,7 +66,7 @@ MAVSDK中参数获取、控制等函数通常会有一个错误返回值，用�
 
 MAVSDK 中许多函数（命令）提供了**同步**和**异步**两种方式。
 
-同步方式是阻塞式的，向固件发送民令，等待成功或失败的结果。
+同步方式是阻塞式的，向固件发送命令，等待成功或失败的结果。
 
 异步方式是非阻塞式的，传入一个回调函数作为参数，可以是函数指针、仿函数、匿名函数。常用 promise future （C++ 多线程）的方式实现异步并发，在回调函数中为 promise 赋值，在外部调用 future 的 get 阻塞。如果停止这个异步函数，则要向其传入空指针。MAVSDK 中大量使用了 promise future。
 
@@ -132,7 +134,7 @@ ConnectionResult connection_result = mavsdk.add_any_connection("tcp://192.168.1.
 用如下函数发现新系统，并在回调函数中处理这个系统。
 
 ```cpp
-mavsdk.subscribe_on_new_system(callback)
+mavsdk.subscribe_on_new_system(callback);
 ```
 
 可以在两个连接之间转发 MAVLink 信息，略。
