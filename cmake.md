@@ -80,8 +80,32 @@ include_directories(${CERES_INCLUDE_DIRS})
 target_link_libraries(target ${CERES_LIBRARIES})
 ```
 
-# 源码编译软件时技巧
+# _ 编译技巧
+
+* `cmake_gui`参数配置
 
 建立build目录，`cmake ..`之后，可以通过`cmake . -L`来查看配置信息与全部可能的选项
 
 直接 `cmake-gui ..` 更香
+
+* 指定路径下寻找库
+
+不同软件可能会依赖于同一库的不同版本。如 OpenCV，我们常需要在计算机上编译几个不同版本的 OpenCV，但只能安装其中一个到默认路径下。我们可以将其他的版本编译后安装在其他位置，也可以不安装，保留在 build 目录下，在项目 CMakeLists.txt 中添加即可。这样 cmake 会在指定路径下搜索指定包的`FindXXX.cmake`或`XXXConfig.cmake`。
+
+如：
+
+```cmake
+set(OpenCV_DIR "/home/dknt/Software/opencv/opencv/build_460")
+find_package(OpenCV REQUIRED)
+
+message("OpenCV Version: ")
+MESSAGE(${OpenCV_VERSION})
+```
+
+有些库还需要安装 package-config 文件，默认在`/usr/lib/pkgconfig`下。需要自定义路径否则会与系统路径下的文件冲突。在编写 CMakeLists.txt 时，需要修改 config 文件默认搜索路径。
+
+```shell
+export PXG_CONFIG_PATH=PXG_CONFIG_PATH:${}
+```
+
+有问题！

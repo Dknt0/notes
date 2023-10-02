@@ -783,6 +783,20 @@ ParamNode() : Node("param_test"), count_(0) {
 
 ## _2.4 tf2
 
+tf2 是 ros2 中的坐标变换包
+
+显示坐标关系，输出 pdf 文件
+
+```bash
+ros2 run tf2_tools view_frames
+```
+
+显示任意两坐标系之间的关系
+
+```bash
+ros2 run tf2_ros tf2_echo [source_frame] [target_frame]
+```
+
 1
 
 # _3 常用工具

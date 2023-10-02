@@ -110,6 +110,8 @@ t1.join();
 
 promise future 用于实现线程异步并发
 
+> 类成员函数作为线程函数使用时，需要传入指向对象的指针，可以是`this`
+
 ## 2.2 mutex 互斥锁
 
 实现临界资源互斥访问。示例如下：
@@ -164,5 +166,20 @@ void * Test::insert_pth(void* __this)
 一种非阻塞式等待`future`的方法：
 
 ```shell
+wait_for(...);
+```
 
+## 2.3 unique_lock 独占锁
+
+独占锁用于管理线程锁`std::mutex`对象，在创建`std::unique_lock`时为其传入一个`std::mutex`对象，独占锁会阻塞等待锁被解开，并上锁执行后面的程序，当独占锁生命周期间结束时，会自动释放线程锁。
+
+示例如下：
+
+```cpp
+std::mutex myMutex;
+{
+    std::unique_lock lck(myMutex);
+    // do sth
+}
+// lck 生命周期结束，myMutex 被释放
 ```
