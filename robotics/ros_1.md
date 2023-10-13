@@ -487,6 +487,18 @@ T.translation.x; // 3d向量
 
 如何将 sensor_msgs 消息转换到 OpenCV、PCL 等库中？
 
+#### 2.5.4.1 激光雷达 sensor_msgs::LaserScan
+
+激光雷达扫描结果
+
+```cpp
+double scan.angle_max; // 扫描最大角度
+double scan.angle_min; // 扫描最小角度
+double scan.range_max; // 扫描最大距离
+double scan.range_min; // 扫描最小距离
+std::vector<double> scan.ranges; // 扫描结果
+```
+
 # 3 启动
 
 ## 3.1 rosrun 命令
