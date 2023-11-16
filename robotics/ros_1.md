@@ -727,7 +727,7 @@ timer.start(); // 定时开始
 
 ## 5.2 坐标变换 TF2
 
-tf2 是很常用的坐标变换包，rviz 中依赖 tf2 显示位置。
+tf2 是很常用的坐标变换包，rviz 中依赖 tf2 显示位置。tf2 是一个坐标变换数据库，tf2 消息中包含了系统所有的坐标变换。基于这个数据库，我们可以实现任意时刻、任何两个坐标系之间的坐标变换。
 
 依赖项 `tf2 tf2_ros tf2_geometry_msgs roscpp rospy std_msgs geometry_msgs`
 
