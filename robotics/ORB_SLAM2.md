@@ -1,4 +1,4 @@
-# ORB SLAM2 使用记录
+# ORB-SLAM2 笔记
 
 > ORB-SLAM3 已经问世，功能强大，加入了地图集、IMU 融合等，可以在 Ubuntu 22 下稳定运行。但相对于视觉 SLAM 任务本身，加入了许多额外的东西。所以决定先阅读 ORB-SLAM2 的源码入门。
 > 
@@ -8,9 +8,162 @@
 > 
 > 参考：
 > 
-> https://gaoyichao.com/Xiaotu/?book=ORB_SLAM%E6%BA%90%E7%A0%81%E8%A7%A3%E8%AF%BB
+> [无处不在的小土-index](https://gaoyichao.com/Xiaotu/?book=ORB_SLAM%E6%BA%90%E7%A0%81%E8%A7%A3%E8%AF%BB&title=index)
+> 
+> [一步步复现ORBSLAM2 - 随笔分类 - 小C酱油兵 - 博客园](https://www.cnblogs.com/yepeichu/category/1356379.html)
 
-# 数据集
+# 1 源码分析
+
+ORB 2 中大部分矩阵用的是 cv::Mat，提供对 Eigen 接口。ORB 3 中改为 Eigen。
+
+**注意**：追踪的结果是 T_cw，世界坐标系相对于相机坐标系的位姿，默认 z 轴向前，x 轴向右，y 轴向下。注意变换顺序。
+
+> 以下分析全部基于适配到 OpenCV 4 的 ORB-SLAM 2
+
+自下而上，先了解底层数据结构，再学习功能类，最后看线程。
+
+为使表述准确、避免歧义，名字使用英文类名。
+
+## 1.1 数据结构
+
+1
+
+### 1.1.1 MapPoint 地图点
+
+地图点
+
+MapPoint 是空间中的 Feature，可能同时被多个 Frame 观测到。类内存储了 MapPoint 的最佳描述子、指向观测 KeyFrame 的指针、以及在 KeyFrame 内对应 KeyPoint 的索引。
+
+ORB-SLAM 地图管理策略是先大量添加 KeyFrame 与 MapPoint，后严格剔除。如何做到剔除？
+
+### 1.1.2 Frame 帧
+
+帧
+
+Frame 中包含关键点
+
+特征提取过程中的网格划分，对于单目、双目、深度图像的不同处理。双目特征点匹配，特征匹配、块匹配、亚像素精度拟合。
+
+### 1.1.3 KeyFrame 关键帧
+
+关键帧
+
+关键帧由帧生成，其实可以继承自帧
+
+### 1.1.4 Map 地图
+
+地图
+
+## 1.2 功能模块
+
+### 1.2.1 ORBextractor 特征提取器
+
+ORB 特征提取器。ORB 特征是加入了旋转不变性的 FAST 特征，通过计算灰度质心得到特征主方向，保证旋转不变性。使用 BRIEF 描述子，描述子计算时抵消了特征主方向。为了保证尺度不变，考虑了从金字塔不同层中提取的特征。
+
+这个提取器是作者从 OpenCV 源码修改得到的，添加了图像金字塔、图像网格划分、四叉树特征筛选等。与 OpenCV 的 ORB 提取相比，特征分布更均匀，能提取到不同尺度的特征，运行速度也更快。
+
+> 源码中特征筛选方法为“八叉树”，但每个节点实际只划分四个子节点，所以我称之为四叉树。
+
+ORBextractor 不依赖于 ORB-SLAM 中的其他模块，我们可以把 ORBextractor 的头文件和源文件单独拿出来编译测试。
+
+ORBextractor 特征提取主要通过 `ComputeKeyPointsOctTree` 实现，但也有另一版本的提取函数 `ComputeKeyPointsOld`，后者划分图像网格，在每个网格中提取特征点，在网格中的按特征响应进行排序，筛选最优特征。如果特征总数不够，则从有多余特征的网格中再筛选一些出来。
+
+ORBextractor 在 Tracking 中创建，Tracking 接收到图像后将 ORBextractor 地址传给 Frame 构造函数，在构造函数中完成特征提取。ORBextractor 提取特征后，会暂时保留着上一次帧的金字塔、尺度等信息，Frame 构造函数之后的操作中会从 ORBextractor 获取这些数据使用。
+
+* 重要成员变量
+
+```cpp
+std::vector<cv::Point> pattern;  // 描述子模板
+std::vector<int> umax;  // 预先计算的 1/4 圆弧点坐标
+std::vector<float> mvScaleFactor;  // 每一层的绝对尺寸比例  大于 1
+std::vector<float> mvInvScaleFactor;  // 每一层的逆绝对尺寸比例  小于 1
+```
+
+#### 1.2.1.1 构造函数
+
+传入特征总数、尺度比例、层数、FAST初始阈值、FAST小阈值。
+
+计算尺度比例信息，计算金字塔每一层需要提取的特征总数，将 BRIEF 数组点对模板加载为 vector，计算 1/4 半圆坐标。1/4 半圆坐标确定灰度质心的计算范围。
+
+#### 1.2.1.2 特征提取与描述子计算
+
+运算符重载 operator()
+
+1 调用 `ComputePyramid` 构建金字塔，金字塔图像预留了 BRIEF 计算边界。
+
+2 调用 `ComputeKeyPointsOctTree` 提取特征。
+
+2.1 遍历金字塔每一层，逐层提取特征。
+
+2.1.1 首先将图像划分大小为 30*30 的网格，遍历每个网格，在网格中提取特征点，提取使用 OpenCV `FAST`，开启 NMS。如果没有提取到，则使用小阈值提取。每个网格中提取到的特征，无论来自大、小阈值，都会先将坐标从网格变换为相对于特征提取边界，再无差别地放入 vToDistributeKeys 向量中。
+
+2.1.2 调用 `DistributeOctTree` 分配特征点
+
+2.1.2.1 划分四叉树，直到子节点数量大于等于目标特征数，或每个子节点都只包含一个特征
+
+2.1.2.2 保留每个子节点中响应最强的特征点，存入结果向量，返回
+
+2.1.3 将特征坐标从相对于特征提取边界变换为相对于金字塔图像，添加层数、尺度信息。
+
+2.2 调用 `computeOrientation` 计算特征主方向。遍历每个特征点，计算灰度质心角
+
+3 逐层计算描述子。
+
+3.1 调用 `GaussianBlur` 进行高斯平滑
+
+3.2 调用 `computeDescriptors` 计算描述子。对每个特征点调用 `computeOrbDescriptor`，取模板点旋转质心角后在图像中的坐标进行比较，得到旋转无关的描述子。
+
+3.3 将特征坐标恢复到金字塔 0 层，放入结果向量
+
+提取后的特征点包括了在金字塔第 0 层中的坐标、方向、尺度、出自金字塔层数、响应强度。
+
+### 1.2.2 ORBmatcher 特征匹配器
+
+1 代码量大
+
+描述一下不同函数的功能
+
+如何匹配不同尺度的特征点?
+
+### 1.2.3 优化、初始化等
+
+1 代码量大
+
+1 数学成分高
+
+### 1.2.4 显示
+
+1 代码量中
+
+## 1.3 线程
+
+1
+
+### 1.3.1 Tracking
+
+1 代码量大
+
+### 1.3.2 LocalMapping
+
+1 代码量中
+
+### 1.3.3 LoopClosing
+
+1 代码量中
+
+### 1.3.4 Viewer
+
+1
+
+# 99 技巧
+
+* std::vector 内存管理
+
+vector 是最常用的 STL 数据结构，可以随机访问。vector 中元素在内存中连续存储，可以使用中动态分配内存，如果我们总是让 vector 自适应的分配内存，会浪费很多时间。所以在使用 vector 时，最好使用 reserve 为其预分配足够的内存。例如，在特征四叉树划分时，会为子节点的特征 vector 预分配与父节点一样大小的内存。这是一种空间换时间的方式。
+
+# 0 其他
+
+## 0.1 数据集
 
 * TUM Dataset 下载。
 
@@ -20,7 +173,7 @@
 
 TUM 数据集分为三个部分 freiburg1, freiburg2, freiburg3，分别用三个不同的深度相机录制，内参和畸变不同，使用 ORB 时，对应参数文件为 TUM1, TUM2, TUM3。
 
-# 三方库版本问题
+## 三方库版本问题
 
 原版的 ORB-SLAM2 发行已经很久了，依赖的软件都比较新，更新很快，依赖关系复杂。
 
@@ -85,7 +238,7 @@ Segmentation fault (core dumped)
 
 1
 
-# ORB-SLAM 稠密重建
+## ORB-SLAM 稠密重建
 
 基于 ORB-SLAM3 计算的轨迹进行三维稠密点云重建。
 
@@ -95,14 +248,10 @@ Segmentation fault (core dumped)
 
 1
 
-# UAV Stereo SLAM Dataset
+## UAV Stereo SLAM Dataset
 
 无人机惯性视觉 SLAM 数据集，可以先在这个上面跑。
 
 https://projects.asl.ethz.ch/datasets/doku.php?id=kmavvisualinertialdatasets
 
 1
-
-# 源码
-
-很多矩阵用的是 cv::Mat 不是 Eigen

@@ -15,5 +15,3 @@ std::this_thread::sleep_for(std::chrono::seconds(1.5));
 using namespace chrono_literals;
 std::this_thread::sleep_for(1.5s);
 ```
-
-
