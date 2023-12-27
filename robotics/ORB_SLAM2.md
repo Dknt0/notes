@@ -14,7 +14,7 @@
 
 # 1 源码分析
 
-ORB 2 中大部分矩阵用的是 cv::Mat，提供对 Eigen 接口。ORB 3 中改为 Eigen。
+ORB 2 中大部分矩阵用的是 cv::Mat，提供对 Eigen 接口。ORB 3 中改为 Eigen，更规范化。
 
 **注意**：追踪的结果是 T_cw，世界坐标系相对于相机坐标系的位姿，默认 z 轴向前，x 轴向右，y 轴向下。注意变换顺序。
 
@@ -22,7 +22,9 @@ ORB 2 中大部分矩阵用的是 cv::Mat，提供对 Eigen 接口。ORB 3 中�
 
 自下而上，先了解底层数据结构，再学习功能类，最后看线程。
 
-为使表述准确、避免歧义，名字使用英文类名。
+找出类中关键的成员变量；找出与类关联的类，以及关联的方式与目的，给出理由；确定每种锁的使用情景。
+
+为使表述准确、避免歧义，名词使用英文类名。
 
 ## 1.1 数据结构
 
@@ -32,27 +34,166 @@ ORB 2 中大部分矩阵用的是 cv::Mat，提供对 Eigen 接口。ORB 3 中�
 
 地图点
 
-MapPoint 是空间中的 Feature，可能同时被多个 Frame 观测到。类内存储了 MapPoint 的最佳描述子、指向观测 KeyFrame 的指针、以及在 KeyFrame 内对应 KeyPoint 的索引。
+MapPoint 是空间中的 Feature，可能同时被多个 KeyFrame 观测到。类内存储了 MapPoint 的最佳描述子、指向观测 KeyFrame 的指针、以及在 KeyFrame 内对应 KeyPoint 的索引。
+
+**重要成员变量**
+
+```cpp
+// 存放了一些在三线程中使用的 public 变量
+cv::Mat mWorldPos;  // 绝对坐标
+cv::Mat mDescriptor;  // 最佳描述子  与其他描述子汉明距离中位数最小的描述子作为最佳描述子
+std::map<KeyFrame*, size_t> mObservations;  // 观测关键帧集  映射<关键帧指针, 此地图点在此关键帧的特征点集合中的序号>
+KeyFrame* mpRefKF;  // 参考关键帧
+float mfMinDistance;  // 最近尺度无关距离
+float mfMaxDistance;  // 最远尺度无关距离
+int mnVisible;  // 可视次数  可视代表地图点位于帧视野范围内，但未必能成功提取特征  可视通过 Frame::isInFrustum 判断
+int mnFound;  // 检测次数  检测代表地图点在某个帧内能成功提取特征，成为关键点
+```
+
+**和 MapPoint 关联的类**
+
+1. KeyFrame
+
+2. Map
+
+1
 
 ORB-SLAM 地图管理策略是先大量添加 KeyFrame 与 MapPoint，后严格剔除。如何做到剔除？
 
+#### 1.1.1.1 构造函数
+
+MapPoint 有两种构造函数，从 KeyFrame 构造和从 Frame 构造。
+
+构造 MapPoint 时需要提供点的空间位置，即点必须被三角化(Monocular)，或深度有效(Stereo, RGB-D)。
+
+两种函数中相同的部分为设置序号信息、空间位置、观测帧信息。
+
+基于 Frame 的构造函数中还计算了最近和最远尺度无关距离，这个距离对应的是 ORB 可以被检测、正确匹配的范围，原理如下。当地图点位于最远观测距离时，它应该在金字塔 0 层被检测到；当位于最近观测距离时，它应该在金字塔最上层被检测到。由此，获取地图点在对应帧中的金字塔层数，用当前层和最底层、最顶层间的比例乘深度，可以得到上述尺度无关距离。
+
+#### 1.1.1.2 最佳描述子计算
+
+`ComputeDistinctiveDescriptors()`
+
+遍历所有观测关键帧中对应关键点的描述子，计算他们之间的汉明距离，选用与其他描述子汉明距离中位数最小的描述子作为最佳描述子
+
+#### 1.1.1.3 地图点替换
+
+`Replace(MapPoint* pMP)`
+
+实际上是地图点继承，新地图点会继承当前点与关键帧之间的观测关系，调整新点观测、调整旧点对应关键帧的观测。
+
 ### 1.1.2 Frame 帧
 
-帧
+帧 已读 代码量中，部分算法
 
-Frame 中包含关键点
+Frame 主要用于处理 Tracking 中的图，提取特征，去除畸变，将特征分配给网格。
 
-特征提取过程中的网格划分，对于单目、双目、深度图像的不同处理。双目特征点匹配，特征匹配、块匹配、亚像素精度拟合。
+Frame 中包含关键点。
+
+* 畸变处理在哪一步?
+
+* 计算中使用的是去畸变关键点？
+
+**重要成员变量**
+
+```cpp
+std::vector<cv::KeyPoint> mvKeys;  // 左图关键点
+std::vector<cv::KeyPoint> mvKeysRight;  // 右图关键点
+std::vector<cv::KeyPoint> mvKeysUn;  // 左图去畸变关键点
+cv::Mat mDescriptors, mDescriptorsRight;  // ORB 描述子
+std::vector<float> mvuRight;  // 特征点右图 u 坐标，双目点第三维坐标  单目取-1
+std::vector<float> mvDepth;  // 深度  单目取-1
+/* 词袋 */
+DBoW2::BowVector mBowVec;  // 视觉描述向量
+DBoW2::FeatureVector mFeatVec;  // 特征向量
+/* 地图点相关 */
+std::vector<MapPoint*> mvpMapPoints;  // 关联到特征点的地图点
+// 特征网格
+std::vector<std::size_t> mGrid[FRAME_GRID_COLS][FRAME_GRID_ROWS];  // 左图网格
+// 位姿信息
+```
+
+特征提取过程中的网格划分，对于单目、双目、深度图像的不同处理。
+
+双目特征点匹配，特征匹配、块匹配、亚像素精度拟合。
 
 ### 1.1.3 KeyFrame 关键帧
 
-关键帧
+关键帧  **存疑**
 
-关键帧由帧生成，其实可以继承自帧
+KeyFrame 由 Frame 生成，可以认为是继承自 KeyFrame
 
-### 1.1.4 Map 地图
+KeyFrame 内部通过指针实现了 SpanningTree 、CovisibilityGraph 数据结构，实现了和 MapPoint 的关联
 
-地图
+这些数据结构是如何实现的，提供了哪些接口？应该是在 LocalMapping 中调用的，先看下线程函数吧
+
+**重要成员变量**
+
+```cpp
+/* 继承 Frame 中大部分成员变量，包括关键点、右点坐标、深度、描述子等 */
+...
+/* 地图点相关 */
+std::vector<MapPoint*> mvpMapPoints;  // 关联到关键点的地图点 按关键点索引，未关联到地图点的关键点赋 nullptr
+/* 共视图相关 */
+std::map<KeyFrame*,int> mConnectedKeyFrameWeights;  // 共视帧与共视数 map<pKeyFrame, weight>
+std::vector<KeyFrame*> mvpOrderedConnectedKeyFrames;  // 有序共视帧
+std::vector<int> mvOrderedWeights;  // 有序权重
+/* 生成树与回环边相关 */
+KeyFrame* mpParent;  // 父关键帧
+std::set<KeyFrame*> mspChildrens;  // 子关键帧
+std::set<KeyFrame*> mspLoopEdges;  // 回环边
+/* 词袋相关 */
+DBoW2::BowVector mBowVec;  // 视觉单词向量  map<单词序号, 单词值>
+DBoW2::FeatureVector mFeatVec;  // 特征向量
+```
+
+**和 KeyFrame 关联的类**
+
+1. MapPoint
+
+2. Map
+
+1
+
+与地图点的关系
+
+生成树的实现
+
+共视图的实现
+
+### 1.1.4 KeyFrameDatabase 关键帧数据库
+
+关键帧数据库 **存疑**
+
+**重要成员变量**
+
+```cpp
+std::vector<list<KeyFrame*> > mvInvertedFile;  // 包含单词的关键帧列表
+```
+
+#### 1.1.4.1 检测回环候选关键帧
+
+1
+
+#### 1.1.4.2 检测重定位候选关键帧
+
+1
+
+### 1.1.5 Map 地图
+
+地图，是 MapPoint, KeyFrame 的集合 **存疑**
+
+地图是关键帧和地图点的集合，本身比较简单，没有特别复杂的成员函数。
+
+**重要成员变量**
+
+```cpp
+std::set<MapPoint*> mspMapPoints;  // 地图点集合
+std::set<KeyFrame*> mspKeyFrames;  // 关键帧集合
+std::vector<MapPoint*> mvpReferenceMapPoints;  // 参考地图点集
+```
+
+1
 
 ## 1.2 功能模块
 
@@ -62,7 +203,7 @@ ORB 特征提取器。ORB 特征是加入了旋转不变性的 FAST 特征，通
 
 这个提取器是作者从 OpenCV 源码修改得到的，添加了图像金字塔、图像网格划分、四叉树特征筛选等。与 OpenCV 的 ORB 提取相比，特征分布更均匀，能提取到不同尺度的特征，运行速度也更快。
 
-> 源码中特征筛选方法为“八叉树”，但每个节点实际只划分四个子节点，所以我称之为四叉树。
+> 源码中特征筛选方法命名为“八叉树”，但每个节点实际只划分四个子节点，所以我称之为四叉树。
 
 ORBextractor 不依赖于 ORB-SLAM 中的其他模块，我们可以把 ORBextractor 的头文件和源文件单独拿出来编译测试。
 
@@ -121,37 +262,59 @@ std::vector<float> mvInvScaleFactor;  // 每一层的逆绝对尺寸比例  小�
 
 1 代码量大
 
-描述一下不同函数的功能
+包含不同模块中用到的不同匹配方法。描述一下不同函数的功能
 
 如何匹配不同尺度的特征点?
 
-### 1.2.3 优化、初始化等
+### 1.2.3 Optimizer 优化器
+
+1
+
+### 1.2.4 PnPsolver PnP求解器
+
+1
+
+### 1.2.5 Sim3Solver Sim(3)求解器
+
+1
+
+### 1.2.6 Initializer 初始化器
+
+g2o优化、Sim3优化、PnP求解、初始化
 
 1 代码量大
 
-1 数学成分高
+1 数学量大
 
-### 1.2.4 显示
+### 1.2.7 词袋
+
+1 外部库，有就好，改进词袋模型对系统影响不大
+
+描述向量与特征向量的计算
+
+### 1.2._ 显示
 
 1 代码量中
+
+基本为功能代码，可有可无
 
 ## 1.3 线程
 
 1
 
-### 1.3.1 Tracking
+### 1.3.1 Tracking 追踪
 
 1 代码量大
 
-### 1.3.2 LocalMapping
+### 1.3.2 LocalMapping 局部建图
 
 1 代码量中
 
-### 1.3.3 LoopClosing
+### 1.3.3 LoopClosing 回环检测
 
 1 代码量中
 
-### 1.3.4 Viewer
+### 1.3.4 Viewer 显示
 
 1
 
