@@ -199,7 +199,7 @@ bool Evaluate(double const* const* parameters,
 
 * `jacobians` 为雅可比，是一个二维数组。第一层为指针数组，这些数组指向每个参数块对应雅可比。第二层数组为雅可比矩阵，以 **row-major** 的方式存放在数组中。用户在计算雅可比时需要注意以下几点：
 
-* *  $\text{jacobians}[i][r * \text{parameter\_block\_sizes}[i] + c]  = \frac{\displaystyle \partial \text{residual}[r]}{\displaystyle \partial \text{parameters}[i][c]}$ 
+* * $\text{jacobians}[i][r * \text{parameter\_block\_sizes}[i] + c]  = \frac{\displaystyle \partial \text{residual}[r]}{\displaystyle \partial \text{parameters}[i][c]}$ 
   
   * jacobians 和 jacobians[i] 都有可能是 nullptr。**当传入空指针时，用户应忽略雅可比的计算**。例如：
   
@@ -251,8 +251,6 @@ problem.AddResidualBlock(costFunction, new ceres::CauchyLoss(0.5), &m, &c);
 
 > Ceres 2.0 之前
 
-
-
 `ceres::LocalParameterization`基类
 
 ```cpp
@@ -272,17 +270,11 @@ class ceres::LocalParameterization {
 };
 ```
 
-
-
-
-
 **重要技巧**：在 LocalParameterization 的雅克比计算一般简单放置为单位阵与零，真正的雅克比计算通常实现在 CostFunction 的 Evaluate 中 。
 
 > 参考
 > 
 > [GitHub - QiukuZ/ceres_R_LocalParam: ceres rotation matrix local parameterization](https://github.com/QiukuZ/ceres_R_LocalParam)
-
-
 
 1
 
@@ -314,10 +306,6 @@ class ceres::Manifold {
   virtual int TangentSize() const = 0;
 };
 ```
-
-
-
-
 
 1
 

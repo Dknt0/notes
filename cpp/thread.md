@@ -178,7 +178,7 @@ wait_for(...);
 ```cpp
 std::mutex myMutex;
 {
-    std::unique_lock lck(myMutex);
+    std::unique_lock<std::mutex> lck(myMutex);
     // do sth
 }
 // lck 生命周期结束，myMutex 被释放
