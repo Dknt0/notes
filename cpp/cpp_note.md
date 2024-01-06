@@ -4257,5 +4257,3 @@ cout << "类型为" << typeid(int).name() << endl;
 ```cpp
 string to_string(int number)
 ```
-
-# Leetcode记录

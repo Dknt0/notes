@@ -16,13 +16,19 @@
 
 # 1 源码分析
 
-ORB 2 中大部分矩阵用的是 cv::Mat，提供对 Eigen 接口。ORB 3 中改为 Eigen，更规范化。
+ORB-SLAM 的用户接口是 System 类。使用 ORB 时，需要在自己的代码中创建 System 对象，用词袋路径、配置文件路径进行初始化，启动三线程。之后只要将输入图像传给 System ，System 会就会返回追踪结果 Tcw。
 
-自下而上，先了解底层数据结构，再学习功能类，最后看线程。
+为支撑 VSLAM 系统运行，ORB 源码除 System 外还有许多类，他们大致可以分为以下三种：数据类、功能类、线程类。数据类用于存放数据，如地图点、关键帧，系统运行过程中会创建大量数据类的对象，因此数据类中应仅存放重要的变量；数据类还应为功能类、线程类提供增、删、查、改等接口。功能类用于实现特征提取、特征匹配、初始化、优化等算法，他们通常会在线程类中被实例化，作为某线程类的成员变量存在。线程类对应独立运行的线程，负责处理输入数据、调用适当的算法工具类、并与其他线程协作。线程类由 System 类统一管理。
+
+下文按照自下而上的思路，先了解底层数据结构，再学习功能类，最后学习线程类是如何将整个系统组织起来的。
+
+1
 
 找出类中关键的成员变量；找出与类关联的类，以及关联的方式与目的，给出理由；确定每种锁的使用情景。
 
 为使表述准确、避免歧义，名词使用英文类名。
+
+> 读源码，写注释。写一段时间记得编译测试一下看，有的人 (没错就是我)，写个注释都能给源码弄出 bug 来...
 
 ```
 伪代码
@@ -31,7 +37,7 @@ L 循环
 C 调用
 ```
 
-## 1.1 数据结构
+## 1.1 数据类
 
 ORB-SLAM 中核心数据库是 Map 与重定位数据库。底层由 KeyFrame, Frame, MapPoint 以及 DBow2 提供的类实现。
 
@@ -43,25 +49,29 @@ Map 由全部 KeyFrame, MapPoint 组成，并包含有抽象的数据结构—�
 
 MapPoint 是空间中的特征点，是 ORB-SLAM 地图基本元素之一。
 
-MapPoint 自身的信息包括空间位置、描述子、观测方向、尺度无关距离。MapPoint 源自于                 二维特征点，带有描述子信息，而图像特征通常只在某个方向、一定距离范围内可以被观测到，因此需要上述信息进行特征匹配。
+MapPoint 自身的信息包括空间位置、描述子、观测方向、尺度无关距离。MapPoint 源自于二维特征点，带有描述子信息，而图像特征通常只在某个方向、一定距离范围内可以被观测到，因此需要上述信息进行特征匹配。
 
-一个 MapPoint  可能被多个 KeyFrame 观测到，需要记录这种观测关系，并提供双向查询的方法。ORB 中 MapPoint 与 KeyFrame 的关联以 KeyFrame 中的 KeyPoint 为准，在 KeyFrame 中建立了指向 MapPoint 的指针向量，按 KeyPoint 顺序进行索引；MapPoint 也建立了 KeyFrame 映射关系，记录观测到当前点的 KeyFrame 以及当前点在 KeyFrame 中对应的 KeyPoint 序号。这种双向关系是通过普通指针实现的，普通指针可以直接作为映射中的 keyword。利用双向关系，有利于实现共视查询：给定一关键帧，遍历其观测地图点，再遍历这些地图点的观测关键帧，并记录共视数，就得到了共视关键帧。
+一个 MapPoint 可能被多个 KeyFrame 观测到，需要记录这种观测关系，并提供双向查询的方法。ORB 中 MapPoint 与 KeyFrame 的关联以 KeyFrame 中的 KeyPoint 为准，在 KeyFrame 中建立了指向 MapPoint 的指针向量，按 KeyPoint 顺序进行索引；MapPoint 也建立了 KeyFrame 映射关系，记录观测到当前点的 KeyFrame 以及当前点在 KeyFrame 中对应的 KeyPoint 序号。这种双向关系是通过普通指针实现的，普通指针可以直接作为映射中的 keyword。利用双向关系，有利于实现共视查询：给定一关键帧，遍历其观测地图点，再遍历这些地图点的观测关键帧，并记录共视数，就得到了共视关键帧。
 
-由于一个 MapPoint 可能被多个关键帧观测到，需要选择最优的描述子与参考关键帧，这会在下文中提及。
+由于一个 MapPoint 可能被多个关键帧观测到，需要选择最优的描述子、计算平均观测方向，并在观测信息更新是同步更新这两个变量。
 
-访问成员变量时，会先上锁，将成员变量内容拷贝，解锁，再使用。
+MapPoint 成员函数中，访问成员变量时，会先上锁，将成员变量内容拷贝，解锁，再使用变量进行计算。
 
 **重要成员变量**
 
 ```cpp
+/* 时间 序号 位置 */
+long unsigned int mnId;  // 地图点序号
 cv::Mat mWorldPos;  // 绝对坐标
+/* 特征与观测 */
 cv::Mat mDescriptor;  // 最佳描述子  与其他描述子汉明距离中位数最小的描述子作为最佳描述子
 std::map<KeyFrame*, size_t> mObservations;  // 观测关键帧集  映射<关键帧指针, 此地图点在此关键帧的特征点集合中的序号>
 cv::Mat mNormalVector;  // 平均观测方向  相机指向地图点
-int nObs;  // 被观测次数
-KeyFrame* mpRefKF;  // 参考关键帧
 float mfMinDistance;  // 最近尺度无关距离
 float mfMaxDistance;  // 最远尺度无关距离
+KeyFrame* mpRefKF;  // 参考关键帧
+/* 观测统计 */
+int nObs;  // 被观测次数  双目点(包括深度点)算两次观测 单目点算一次观测
 int mnVisible;  // 可视次数  可视代表地图点位于帧视野范围内，但未必能成功提取特征  可视通过 Frame::isInFrustum 判断
 int mnFound;  // 检测次数  检测代表地图点在某个帧内能成功提取特征，成为关键点
 // 存放了一些在三线程中使用的 public 变量
@@ -99,9 +109,9 @@ MapPoint 有两种构造函数，从 KeyFrame 构造和从 Frame 构造。
 
 **最近和最远尺度无关距离**——这个距离对应的是 ORB 可以在图像中被成功检测、正确匹配的范围。当地图点位于最远观测距离时，它应该在金字塔 0 层被检测到；当位于最近观测距离时，它应该在金字塔最上层被检测到。由此，获取地图点在对应帧中的金字塔层数，用当前层和最底层、最顶层间的比例乘特征点深度，可以得到上述尺度无关距离。
 
-#### 1.1.1.2 最佳描述子计算
+#### 1.1.1.2 ComputeDistinctiveDescriptors 最佳描述子计算
 
-`ComputeDistinctiveDescriptors()`
+`void MapPoint::ComputeDistinctiveDescriptors()`
 
 遍历所有观测关键帧中对应关键点的描述子，计算他们之间的汉明距离，选用与其他描述子汉明距离中位数最小的描述子作为最佳描述子
 
@@ -111,9 +121,9 @@ MapPoint 有两种构造函数，从 KeyFrame 构造和从 Frame 构造。
 3 选用与其他描述子汉明距离中位数最小的描述子作为最佳描述子
 ```
 
-#### 1.1.1.3 地图点替换
+#### 1.1.1.3 Replace 地图点替换
 
-`Replace(MapPoint* pMP)`
+`void MapPoint::Replace(MapPoint* pMP)`
 
 其实是地图点继承，用于地图点融合，新地图点会继承当前点与关键帧之间的观测关系。
 
@@ -128,9 +138,9 @@ MapPoint 有两种构造函数，从 KeyFrame 构造和从 Frame 构造。
 5 从地图删除当前点
 ```
 
-#### 1.1.1.4 更新法线和深度
+#### 1.1.1.4 UpdateNormalAndDepth 更新法线和深度
 
-`UpdateNormalAndDepth()`
+`void MapPoint::UpdateNormalAndDepth()`
 
 当观测关系改变后会调用此函数，用于更新地图点平均观测方向和尺度无关距离
 
@@ -141,15 +151,13 @@ MapPoint 有两种构造函数，从 KeyFrame 构造和从 Frame 构造。
 
 ### 1.1.2 Frame 帧
 
-Frame 是 SLAM 中的帧，输入图像的信息被提取后，创建 Frame 对象存储其信息。为节省内存 Frame 不会直接存放图像。Frame 通常是当前帧，如果满足关键帧条件，则会构造关键帧，存于 Map 中。
+Frame 是 SLAM 中的帧，输入图像的信息被提取后，创建 Frame 对象存储其信息。为节省内存 Frame 不会直接存放图像，图像会暂存于 ORBextractor 中。Frame 通常是当前帧，如果满足关键帧条件，则会构造关键帧，存于 Map 中。
 
-Frame 主要用于处理 Tracking 中的图，提取特征，去除畸变，将特征分配给网格。
+Frame 中不会对整张图像矫畸变，而是直接在畸变图像上提取特征，再将提取到的特征点坐标进行去畸变，这样可以保留更多的图像信息，也可以节省时间。
 
-Frame 中包含关键点。
+特征被提取、校畸变后，其序号会被记录到对应的特征网格中。特征网格的边界是原图像边界去畸变后的坐标，因此可能位于图片外，之后的运算里以这个边界为准。
 
-* 畸变处理在哪一步?
-
-* 计算中使用的是去畸变关键点？
+注意，虽然 Frame 有 MapPoint 观测向量成员变量，但 Frame 中并没有提供 MapPoint 观测的相关函数！
 
 **重要成员变量**
 
@@ -157,43 +165,44 @@ Frame 中包含关键点。
 /* 位姿 序号 时间 */
 long unsigned int mnId;  // 帧 id
 cv::Mat mTcw;  // 相机位姿
-/* 特征相关 */
+/* 特征 */
+std::vector<cv::KeyPoint> mvKeys;  // 左图畸变关键点
+std::vector<cv::KeyPoint> mvKeysRight;  // 右图畸变关键点
 std::vector<cv::KeyPoint> mvKeysUn;  // 左图去畸变关键点
-std::vector<MapPoint*> mvpMapPoints;  // 关联到特征点的地图点
 cv::Mat mDescriptors, mDescriptorsRight;  // ORB 描述子  左, 右
 std::vector<float> mvuRight;  // 特征点右图 u 坐标，双目点第三维坐标  单目取-1
 std::vector<float> mvDepth;  // 深度  单目取-1
 std::vector<std::size_t> mGrid[FRAME_GRID_COLS][FRAME_GRID_ROWS];  // 去畸变左图网格 (x)(y)(vector<关键点序号>)
-std::vector<cv::KeyPoint> mvKeys;  // 左图畸变关键点
-std::vector<cv::KeyPoint> mvKeysRight;  // 右图畸变关键点
+/* 地图点观测 */
+std::vector<MapPoint*> mvpMapPoints;  // 关联到特征点的地图点
 /* 词袋 */
-DBoW2::BowVector mBowVec;  // 视觉描述向量
-DBoW2::FeatureVector mFeatVec;  // 特征向量
+DBoW2::BowVector mBowVec;  // 视觉单词向量  map<单词序号, 单词值>
+DBoW2::FeatureVector mFeatVec;  // 视觉特征向量  map<节点id, 关键点序号集>
 ```
 
-特征提取过程中的网格划分，对于单目、双目、深度图像的不同处理。
-
-双目特征点匹配，特征匹配、块匹配、亚像素精度拟合。
+Frame 中无互斥锁
 
 #### 1.1.2.1 构造函数
 
-Frame 构造函数分为四类：拷贝构造函数 、单目构造函数、双目构造函数、深度构造函数。
+Frame 构造函数分为五类：默认构造函数、拷贝构造函数 、双目构造函数、深度构造函数、单目构造函数。
+
+* 默认构造函数
+
+啥也没干
 
 * 拷贝构造函数
 
 复制信息，id 也是拷贝的
 
-* 单目构造函数
-
-1
-
 * 双目构造函数
 
-输入带畸变的双目图像，构造 Frame 对象。
+> **双目匹配中使用的左、右特征点都是带畸变的，这样匹配出的视差有问题**
 
-首先对图像进行特征提取，计算描述子。提取特征是在畸变图像上进行的，之后会将提取结果去畸变，得到真实像素坐标。
+输入一对带畸变的双目灰度图像，构造 Frame 对象
 
-双目视差不是直接计算得出的，构造函数中先提取了左、右图像特征点，进行特征匹配，再进行匹配点对之间的视差。视差的计算比较复杂，结果为亚像素精度，由`ComputeStereoMatches`函数实现。
+首先在左、右畸变图像上分别用左、右提取器进行特征提取，计算描述子。之后会对特征点进行畸变矫正，得到去畸变像素坐标。
+
+双目视差不是逐像素稠密计算的。构造函数对左、右图像特征点进行特征匹配，再进行匹配点对之间的视差。视差的计算比较复杂，结果为亚像素精度，由`ComputeStereoMatches`函数实现。
 
 最后，会将提取到的特征点分配到特征网格中。
 
@@ -212,15 +221,50 @@ Frame 构造函数分为四类：拷贝构造函数 、单目构造函数、双�
 
 * 深度构造函数
 
-1
+输入一对带畸变的灰度图、深度图，构造 Frame 对象
 
-#### 1.1.2.2 双目匹配计算
+ORB 中仅有单目点、近双目点、远双目点，因此会将深度图像中的特征点转为双目特征点的形式——通过一个假设基线长度，计算特征点深度对应的视差。
 
-`ComputeStereoMatches()`
+计算深度图像右点坐标时是基于去畸变特征点坐标的，因此不存在双目中的关于视差问题。
+
+```
+1 从左提取器获取金字塔尺度信息
+2 在畸变图像上提取 ORB 特征，计算描述子  `ExtractORB` C
+  1 调用左图 ORB 提取器，计算畸变特征与其描述子，存于向量中
+3 计算关键点的去畸变坐标  `UndistortKeyPoints` C
+  1 根据畸变参数，计算左图关键点的去畸变坐标
+4 依据深度图像计算特征点右点坐标  `ComputeStereoFromRGBD` C
+  1 遍历左图特征点，如果特征点深度有效，则基于左特征点去畸变坐标，计算其右点坐标
+5 如果是初始化过程，计算去畸变图像边界  `ComputeImageBounds` C
+  1 计算去畸变图像边界位置，根据畸变类型不同，边界可能位于图像外
+6 分配特征到网格  `AssignFeaturesToGrid` C
+  1 按照去畸变坐标计算特征点对应网格标号，记录特征点序号到网格向量中
+```
+
+* 单目构造函数
+
+输入带畸变的单目图像，构造 Frame 对象
+
+```
+1 从左提取器获取金字塔尺度信息
+2 在畸变图像上提取 ORB 特征，计算描述子  `ExtractORB` C
+  1 调用左图 ORB 提取器，计算畸变特征与其描述子，存于向量中
+3 计算关键点的去畸变坐标  `UndistortKeyPoints` C
+  1 根据畸变参数，计算左图关键点的去畸变坐标
+4 右点坐标与深度向量赋值 -1
+5 如果是初始化过程，计算去畸变图像边界  `ComputeImageBounds` C
+  1 计算去畸变图像边界位置，根据畸变类型不同，边界可能位于图像外
+6 分配特征到网格  `AssignFeaturesToGrid` C
+  1 按照去畸变坐标计算特征点对应网格标号，记录特征点序号到网格向量中
+```
+
+#### 1.1.2.2 ComputeStereoMatches 双目匹配计算
+
+`void Frame::ComputeStereoMatches()`
 
 匹配双目特征点，确定右点坐标与深度。
 
-> **此函数中使用的左、右特征点都是带畸变的，这样匹配出的视差貌似有点问题**
+> **此函数中使用的左、右特征点都是带畸变的，这样匹配出的视差有问题**
 
 ORB-SLAM 中的双目匹配不是逐像素的稠密匹配，而是基于特征点在左、右图特征点之间进行。双目匹配点对应满足以下条件：匹配点对位于同一行；左点坐标位于右点之右；视差应在合理范围之内；特征尺度应该相同。也许是考虑标定、畸变带来的误差，在此函数中，对于一个左图特征点，会在右图相邻几行中，遍历视差在合理范围内，且特征尺度（即金字塔层数）相差不超过 1 的特征点，寻找最佳的特征点匹配。上述“合理范围”中，视差范围仅与内参有关，相邻行范围与特征尺度有关，尺度相差范围为固定值 1.
 
@@ -238,23 +282,57 @@ ORB-SLAM 中的双目匹配不是逐像素的稠密匹配，而是基于特征�
 3 匹配点对筛选，依据块匹配误差对匹配结果排序，按照误差中值剔除误差过大的匹配对
 ```
 
+#### 1.1.2.3 isInFrustum 截椎体检查
+
+`bool Frame::isInFrustum(MapPoint *pMP, float viewingCosLimit)`
+
+检查 MapPoint 是否在 Frame 截椎体内部、是否在尺度无关范围内、是否满足余弦阈值，如果是，填充 MapPoint 内 Tracking 所需的信息。
+
+```
+1 计算地图点相对于相机位置 tc
+2 检查深度是否为负
+3 投影到归一化平面，检查是否在去畸变边界外
+4 检查距离是否在尺度无关范围外
+5 检查观测方向与光轴夹角余弦是否小于阈值
+6 若 2~5 皆否，预测尺度，填充地图点信息
+```
+
+#### 1.1.2.4 GetFeaturesInArea 获取区域内特征
+
+`vector<size_t> Frame::GetFeaturesInArea(const float &x, const float &y, const float &r, const int minLevel, const int maxLevel) const`
+
+获取以 x, y 为中心，r 为边的 1/2 的方形区域内的关键点序号
+
 ### 1.1.3 KeyFrame 关键帧
 
-关键帧  **存疑**
+ORB 中 KeyFrame 是 Map 的构成元素，用于确定局部地图范围、回环检测与重定位。KeyFrame 基于 Frame 构造，继承了 Frame 中大部分成员变量，包括特征点、词袋描述、地图点匹配等，在此基础上，扩充了地图点、共视图、生成树相关的变量与函数。
 
-KeyFrame 由 Frame 生成，可以认为是继承自 KeyFrame
+Frame 中并没有填充地图点观测向量，所以实际观测是在 KeyFrame 中进行的。KeyFrame 中提供了 MP 观测增、删、查、改相关的函数，比较简单，不多叙述。
 
-KeyFrame 内部通过指针实现了 SpanningTree 、CovisibilityGraph 数据结构，实现了和 MapPoint 的关联
+ORB 中 没有为共视图 (Covisibility Graph) 和生成树 (Spanning Tree) 设计专门的数据结构，他们都是通过 KeyFrame 中的成员变量实现的。二者都用于记录 KeyFrame 之间的关联关系，但关系的类型有所不同。生成树的边有向，且为共视图边的子集。
 
-这些数据结构是如何实现的，提供了哪些接口？应该是在 LocalMapping 中调用的，先看下线程函数吧
+共视图记录了 KeyFrame 与其他 KeyFrame 相互关联，用于回环检验、重定位、位姿图优化。一次共视指两个 KeyFrame 中各存在一个 KeyPoint 关联到同一个 MapPoint，全部的共视 KeyFrame 与共视数记录于 mConnectedKeyFrameWeights 映射中。初次创建 KeyFrame 时，需要通过 KeyFrame 与 MapPoint 间的双向查询确定共视关系，即遍历 KF1 观测到的 MP，再遍历每个 MP 关联的 KF，统计即可得到共视数。KeyFrame 间的共视数越大，关联越强，位姿估计越精确 (但共视过大也代表 KeyFrame 冗余)；对应地，如果两个 KeyFrame 间仅有几个共视 MapPoint，则这种弱共视关系无法提供可靠的信息。因此，需要对共视 KeyFrame 进行排序与筛选，建立共视关系时，用一个固定的共视阈值对共视 KF 进行筛选；排序通过 `UpdateBestCovisibles` 函数进行，每一次改变共视关系时都需要调用，结果存放于 mvpOrderedConnectedKeyFrames 和 mvOrderedWeights 向量中。
+
+生成树描述 KeyFrame 的先后关系与回环关系。一个 KF 只能有一个父 KF，可能有多个子 KF 与回环 KF，因此成员变量中有一个指向父 KF 的指针，以及子 KF 和回环 KF 指针的 vector。生成树相关函数是基本的增、删、查、改，不多叙述。
 
 **重要成员变量**
 
 ```cpp
-/* 继承 Frame 中大部分成员变量，包括关键点、右点坐标、深度、描述子等 */
-...
-/* 地图点相关 */
-std::vector<MapPoint*> mvpMapPoints;  // 关联到关键点的地图点 按关键点索引，未关联到地图点的关键点赋 nullptr
+/* 继承自 Frame 中的变量，包括关键点、右点坐标、深度、描述子等 */
+const std::vector<cv::KeyPoint> mvKeys;  // 左图关键点
+const std::vector<cv::KeyPoint> mvKeysUn;  // 左图去畸变关键点
+const std::vector<float> mvuRight;  // 特征点右图 u 坐标，双目点第三维坐标 单目取-1
+const std::vector<float> mvDepth;  // 深度 单目取-1
+const cv::Mat mDescriptors;  // 左图关键点描述子
+DBoW2::BowVector mBowVec;  // 视觉单词向量  map<单词序号, 单词值>
+DBoW2::FeatureVector mFeatVec;  // 视觉特征向量  map<节点id, 关键点序号集>
+std::vector<MapPoint*> mvpMapPoints;  // 关联到关键点的地图点 按关键点索引，未关联到地图点的关键点赋 nullptr  继承自 Frame, 但 Frame 并没有填充此向量信息
+/* 位姿 序号 时间 */
+long unsigned int mnId;  // 关键帧序号
+cv::Mat Tcw;  // 位姿  世界相对相机
+cv::Mat Twc;  // 位姿  相机相对世界
+cv::Mat Ow;  // 平移 相机相对世界 wc ==mtwc
+cv::Mat Cw;  // 双目相机中点
 /* 共视图相关 */
 std::map<KeyFrame*,int> mConnectedKeyFrameWeights;  // 共视帧与共视数 map<pKeyFrame, weight>
 std::vector<KeyFrame*> mvpOrderedConnectedKeyFrames;  // 有序共视帧
@@ -263,28 +341,74 @@ std::vector<int> mvOrderedWeights;  // 有序权重
 KeyFrame* mpParent;  // 父关键帧
 std::set<KeyFrame*> mspChildrens;  // 子关键帧
 std::set<KeyFrame*> mspLoopEdges;  // 回环边
-/* 词袋相关 */
-DBoW2::BowVector mBowVec;  // 视觉单词向量  map<单词序号, 单词值>
-DBoW2::FeatureVector mFeatVec;  // 特征向量
 ```
 
-**和 KeyFrame 关联的类**
+**互斥锁**
 
-1. MapPoint
+```cpp
+std::mutex mMutexPose;  // 位姿锁
+std::mutex mMutexConnections;  // 共视图、生成树、回环锁
+std::mutex mMutexFeatures;  // 地图点锁
+```
 
-2. Map
+#### 1.1.3.1 构造函数
 
-1
+拷贝 Frame 中信息，初始化成员变量，没做什么特殊工作
 
-与地图点的关系
+#### 1.1.3.2 UpdateConnections 创建共视关系
 
-生成树的实现
+`void KeyFrame::UpdateConnections()`
 
-共视图的实现
+属于共视图相关函数。依据 KF 观测到的 MP 查询 共视 KF，统计、筛选共视数，填充共视向量。如果 KF 是第一次被添加，则将共视数最多的 KF 作为父 KF。
+
+```
+1 遍历观测 MPi, 遍历每个 MPi 关联的 KFj, 统计共视数到共视映射 mKF
+2 遍历共视映射 mKF，保留共视数超过 15 的 KFi 为共视关键帧，将当前 KF 添加到 KFi 共视图
+3 如果共视数均未超过 15，保留最大共视 KF，更新对方共视关系
+4 对共视数进行排序，同 `UpdateBestCovisibles`
+5 如果当前 KF 初次添加，则将共视数最多的 KF 作为父 KF
+```
+
+#### 1.1.3.3 SetBadFlag 设置为坏关键帧
+
+`void KeyFrame::SetBadFlag()`
+
+将 KF 设置为坏，并更新其与其他 KF, MP 间的关联关系。
+
+共视图、地图点观测的更新都是简单的删除，生成树更新时，需要按照一定策略为子节点选择合适的父节点。
+
+```
+1 删除共视图中当前 LF 的共视信息
+2 删除观测 MP 中当前 KF 的观测信息
+3 删除生成树中当前帧的观测信息
+  1 将父 KF 添加到候选父节点向量
+  2 遍历子 KF, 寻找一对最佳父子关系  L
+    1 遍历子节点共视 KF 中同时为候选父节点的 KF，记录最佳共视数与序号
+    2 按照最佳父子关系，为子节点设置父 KF，同时将此子节点添加到候选父节点向量
+    3 如果为所有子节点都分配了父节点，或候选父节点与子节点不存在共视关系，退出此循环
+4 将剩余子节点的父节点设置为当前 KF 的父节点
+5 从 Map, KeyFrameDatabase 中清除此节点
+```
+
+#### 1.1.3.4 GetFeaturesInArea 获取区域内特征
+
+`vector<size_t> KeyFrame::GetFeaturesInArea(const float &x, const float &y, const float &r) const`
+
+获取以 x, y 为中心，r 为边的 1/2 的方形区域内的关键点序号。同 Frame, 见 1.1.2.4
 
 ### 1.1.4 KeyFrameDatabase 关键帧数据库
 
-关键帧数据库 **存疑**
+关键帧数据库
+
+1
+
+主要函数：
+
+回环关键帧筛选
+
+重定位关键帧筛选
+
+1
 
 **重要成员变量**
 
@@ -302,7 +426,7 @@ std::vector<list<KeyFrame*> > mvInvertedFile;  // 包含单词的关键帧列表
 
 ### 1.1.5 Map 地图
 
-地图，是 MapPoint, KeyFrame 的集合 **存疑**
+地图，是 MapPoint, KeyFrame 的集合
 
 地图是关键帧和地图点的集合，本身比较简单，没有特别复杂的成员函数。
 
@@ -316,7 +440,7 @@ std::vector<MapPoint*> mvpReferenceMapPoints;  // 参考地图点集
 
 1
 
-## 1.2 功能模块
+## 1.2 功能类
 
 ### 1.2.1 ORBextractor 特征提取器
 
@@ -331,6 +455,10 @@ ORBextractor 不依赖于 ORB-SLAM 中的其他模块，我们可以把 ORBextra
 ORBextractor 特征提取主要通过 `ComputeKeyPointsOctTree` 实现，但也有另一版本的提取函数 `ComputeKeyPointsOld`，后者划分图像网格，在每个网格中提取特征点，在网格中的按特征响应进行排序，筛选最优特征。如果特征总数不够，则从有多余特征的网格中再筛选一些出来。
 
 ORBextractor 在 Tracking 中创建，Tracking 接收到图像后将 ORBextractor 地址传给 Frame 构造函数，在构造函数中完成特征提取。ORBextractor 提取特征后，会暂时保留着上一次帧的金字塔、尺度等信息，Frame 构造函数之后的操作中会从 ORBextractor 获取这些数据使用。
+
+KeyPoint 的成员变量：0 层位置、响应强度、方向（度）、层数
+
+KeyPoint 尺度级别（层数）越高，特征点深度越小
 
 * 重要成员变量
 
@@ -351,10 +479,8 @@ std::vector<float> mvInvScaleFactor;  // 每一层的逆绝对尺寸比例  小�
 
 运算符重载 operator()
 
-算法
-
 ```
-1 调用 `ComputePyramid` 构建金字塔，金字塔图像预留了 BRIEF 计算边界。
+1 调用 `ComputePyramid` 构建金字塔，金字塔图像预留了 BRIEF 计算边界
 2 调用 `ComputeKeyPointsOctTree` 提取特征  C
   1 遍历金字塔每一层，逐层提取特征  L
     1 首先将图像划分大小为 30*30 的网格，遍历每个网格，在网格中提取特征点，提取使用 OpenCV `FAST`，开启 NMS。如果没有提取到，则使用小阈值提取。每个网格中提取到的特征，无论来自大、小阈值，都会先将坐标从网格变换为相对于特征提取边界，再无差别地放入 vToDistributeKeys 向量中。
@@ -377,7 +503,63 @@ std::vector<float> mvInvScaleFactor;  // 每一层的逆绝对尺寸比例  小�
 
 包含不同模块中用到的不同匹配方法。描述一下不同函数的功能
 
-如何匹配不同尺度的特征点?
+如何匹配不同尺度的特征点? 尺度范围有所限制
+
+1
+
+匹配限制方法：
+
+为了避免对所有特征点暴力匹配，使用投影点窗口，或者词袋特征向量，限制搜索范围
+
+投影筛选，投影点筛选，投影窗口内特征点筛选，双目投影误差
+
+限制的目的：加速；利用几何约束防止误匹配(词袋应该只能加速)
+
+1
+
+匹配对筛选方法：
+
+旋转直方图
+
+最佳、次佳匹配阈值
+
+1
+
+大概分为以下几类函数：
+
+投影匹配函数——四个重载，一个 Sim3 互投影
+
+词袋匹配函数——两个重载
+
+初始化与三角化（这个分类不好）
+
+地图点融合——两个重载
+
+工具函数——描述子距离计算，直方图最大值计算，极线误差计算
+
+1
+
+#### 1.2.2.1 DescriptorDistance 计算描述子汉明距离
+
+`int ORBmatcher::DescriptorDistance(const cv::Mat &a, const cv::Mat &b)`
+
+计算两个 256 位描述子的汉明距离，每个描述子为 1*256 的 cv::Mat
+
+使用了[并行位操作](http://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel)的快速算法
+
+1
+
+#### 1.2.2.2 SearchByProjection 按投影搜索
+
+`SearchByProjection`
+
+取遍搜索地图点，投影到帧内，选取投影点附近满足要求的关键点作为候选点，寻找最佳匹配
+
+对匹配点对的要求
+
+四种重载
+
+1
 
 ### 1.2.3 Optimizer 优化器
 
@@ -463,7 +645,9 @@ g2o优化、Sim3优化、PnP求解、初始化
 
 基本为功能代码，可有可无
 
-## 1.3 线程
+## 1.3 线程类
+
+三线程 + 显示
 
 1
 
@@ -494,6 +678,14 @@ g2o优化、Sim3优化、PnP求解、初始化
 * std::vector 内存管理
 
 vector 是最常用的 STL 数据结构，可以随机访问。vector 中元素在内存中连续存储，可以使用中动态分配内存，如果我们总是让 vector 自适应的分配内存，会浪费很多时间。所以在使用 vector 时，最好使用 reserve 为其预分配足够的内存。例如，在特征四叉树划分时，会为子节点的特征 vector 预分配与父节点一样大小的内存。这是一种空间换时间的方式。
+
+* 矩阵库
+
+ORB 2 中大部分矩阵用的是 cv::Mat，提供对 Eigen 接口。ORB 3 中改为 Eigen，更规范化。
+
+* std::vector<std::pair<..., ...>> 排序
+
+这种类型的向量可以直接将迭代起放入 std::sort 通过 pair.first 进行排序
 
 # 0 其他
 
