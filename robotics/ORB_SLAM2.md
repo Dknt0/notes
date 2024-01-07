@@ -398,37 +398,74 @@ std::mutex mMutexFeatures;  // 地图点锁
 
 ### 1.1.4 KeyFrameDatabase 关键帧数据库
 
-关键帧数据库
+关键帧数据库用于回环候选关键帧检测、重定位候选关键帧检测，基于 KeyFrame。可以通过 `add`, `erase` 函数添加、删除 KF。
 
-1
+关键帧数据库记录了视觉词典中的词汇在哪些 KF 中出现过，即逆文件。逆文件与文件相反，文件记录了出现的单词，而记录单词在哪些文件中出现过的结构，就是逆文件。通过逆文件，可以实现回环候选关键帧检测，以及重定位候选关键帧检测。
 
-主要函数：
-
-回环关键帧筛选
-
-重定位关键帧筛选
-
-1
+回环、重定位候选检测本质上是相同的，都是在不利用共视关系的前提下，利用词袋信息寻找相似度最高的关键帧。
 
 **重要成员变量**
 
 ```cpp
-std::vector<list<KeyFrame*> > mvInvertedFile;  // 包含单词的关键帧列表
+std::vector<list<KeyFrame*> > mvInvertedFile;  // 逆文件向量  包含单词的关键帧列表  [单词序号]list<关键帧>
 ```
 
-#### 1.1.4.1 检测回环候选关键帧
+**互斥锁**
 
-1
+```cpp
+std::mutex mMutex;  // 关键帧数据库锁
+```
 
-#### 1.1.4.2 检测重定位候选关键帧
+#### 1.1.4.1 DetectLoopCandidates 检测回环候选关键帧
 
-1
+`vector<KeyFrame*> KeyFrameDatabase::DetectLoopCandidates(KeyFrame* pKF, float minScore)`
+
+回环候选 KF 是与当前 KF 不构成共视的 KF 中，相似度最高的那一部分。回环检测可以提高建图精度、保证全局一致性，是 VSLAM 和 VO 主要的区分点，相对地，错误的回环结果会导致巨大的建图误差。因此在回环检测时，需要以牺牲一部分召回率为代价，保证较高的准确率。在这个函数中，使用了严格的搜索策略来保证准确率，不仅筛选候选 KF 与当前 KF 的相似性得分，还要求候选 KF 的共视 KF 也是候选 KF，即，当前 KF 与连续几个 KF 都有较高相似性，才会提出回环。
+
+候选 KF 的相同单词数、相似性得分等变量存放于 KF public 成员变量中。
+
+函数中有如下四个不同级别的候选 KF 集：
+
+```cpp
+list<KeyFrame*> lKFsSharingWords;  // 与当前 KF 有相同词汇的候选 KF
+list<pair<float,KeyFrame*> > lScoreAndMatch;  // 相似性得分-关键帧列表  list<pair<相似性得分, 关键帧>>
+list<pair<float,KeyFrame*> > lAccScoreAndMatch;  // 累计相似性得分-关键帧列表  list<pair<累计相似性得分, 关键帧>>
+vector<KeyFrame*> vpLoopCandidates;  // 回环候选关键帧
+```
+
+为了避免多次计算相似性得分，函数中利用了逆文件。首先，依据当前 KF 的描述向量中的单词，从逆文件中寻找与当前 KF 有相同单词、且不构成共视关系的候选 KF，存放于 `lKFsSharingWords`。之后，保留其中相同单词数超过最大值比例阈值的候选关键帧。然后，依据描述向量计算当前 KF 与候选关键帧的相似性得分，按照输入阈值过滤，存于 `lScoreAndMatch`。接着，对每一个候选 KF，取其 10 个最佳共视 KF，对共视 KF 中同样为回环候选 KF 的，累加其相似性得分，并选取这一组共视 KF 中相似性得分最高的作为最终候选 KF，按照最大值比例阈值过滤，存于 `lAccScoreAndMatch`。注意，这里对每个候选 KF 选择其共视组中最佳的 KF，因此 `lAccScoreAndMatch` 中可能出现重复，所以在函数最后筛选了 `lAccScoreAndMatch` 中不重复的 KF，存放于 `vpLoopCandidates`，返回结果。
+
+```
+1 遍历当前 KF 描述向量，从逆文件查询与当前 KF 有相同视觉词汇且不构成共视关系的 KF，作为候选 KF, 存入 lKFsSharingWords
+2 计算相同单词数阈值，阈值为最多相同单词数的 0.8 倍
+3 按照相同单词数阈值对候选关键帧进行筛选，对满足要求的候选 KF 计算相似性得分，保留得分高于阈值的关键帧，存入 lScoreAndMatch
+4 依据共视关系计算累计相似性分数，考虑候选 KF 共视关键帧中同样为候选 KF 的那部分，对他们与被搜索帧的相似性得分求和，保留组共视帧中得分最大的 KF，存入 lAccScoreAndMatch
+5 保留所有累计得分高于最高得分 0.75 倍的候选关键帧
+6 筛选候选关键帧，防止重复出现
+```
+
+#### 1.1.4.2 DetectRelocalizationCandidates 检测重定位候选关键帧
+
+`vector<KeyFrame*> KeyFrameDatabase::DetectRelocalizationCandidates(Frame *F)`
+
+类似于 `DetectLoopCandidates`。
+
+```
+1 遍历当前 F 描述向量，从逆文件查询与当前 KF 有相同视觉词汇的 KF，作为候选 KF, 存入 lKFsSharingWords
+2 计算相同单词数阈值，阈值为最多相同单词数的 0.8 倍
+3 按照相同单词数阈值对候选关键帧进行筛选，对满足要求的候选 KF 计算相似性得分，存入 lScoreAndMatch
+4 依据共视关系计算累计相似性分数，考虑候选 KF 共视关键帧中同样为候选 KF 的那部分，对他们与被搜索帧的相似性得分求和，保留组共视帧中得分最大的 KF，存入 lAccScoreAndMatch
+5 保留所有累计得分高于最高得分 0.75 倍的候选关键帧
+6 筛选候选关键帧，防止重复出现
+```
 
 ### 1.1.5 Map 地图
 
 地图，是 MapPoint, KeyFrame 的集合
 
-地图是关键帧和地图点的集合，本身比较简单，没有特别复杂的成员函数。
+地图是关键帧和地图点的集合。成员函数为基本的增删查改，不多叙述。
+
+> Map 在清除个别 MP, KF 时仅仅将指针从 set 中清除，但并没有从堆区中删除 MP 与 KF 本身，会造成内存泄漏。
 
 **重要成员变量**
 
@@ -436,9 +473,18 @@ std::vector<list<KeyFrame*> > mvInvertedFile;  // 包含单词的关键帧列表
 std::set<MapPoint*> mspMapPoints;  // 地图点集合
 std::set<KeyFrame*> mspKeyFrames;  // 关键帧集合
 std::vector<MapPoint*> mvpReferenceMapPoints;  // 参考地图点集
+std::vector<KeyFrame*> mvpKeyFrameOrigins;  // 关键帧原点
 ```
 
-1
+**互斥锁**
+
+```cpp
+std::mutex mMutexMapUpdate;  // 地图更新锁
+std::mutex mMutexPointCreation;  // 地图点创建锁
+std::mutex mMutexMap;  // 地图锁
+```
+
+
 
 ## 1.2 功能类
 
@@ -639,7 +685,7 @@ g2o优化、Sim3优化、PnP求解、初始化
 
 描述向量与特征向量的计算
 
-### 1.2._ 显示
+### 1.2.8 显示
 
 1 代码量中
 
