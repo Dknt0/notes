@@ -587,11 +587,9 @@ std::vector<float> mvInvScaleFactor;  // 每一层的逆绝对尺寸比例  小�
 
 `int ORBmatcher::DescriptorDistance(const cv::Mat &a, const cv::Mat &b)`
 
-计算两个 256 位描述子的汉明距离，每个描述子为 1*256 的 cv::Mat
+计算两个 256 位描述子的汉明距离，每个描述子为 1*256 bit 的 cv::Mat
 
 使用了[并行位操作](http://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel)的快速算法
-
-1
 
 #### 1.2.2.2 SearchByProjection 按投影搜索
 
@@ -602,6 +600,10 @@ std::vector<float> mvInvScaleFactor;  // 每一层的逆绝对尺寸比例  小�
 对匹配点对的要求
 
 四种重载
+
+1
+
+#### 1.2.2.3 词袋搜索
 
 1
 
@@ -663,9 +665,44 @@ g2o::EdgeInverseSim3ProjectXYZ  // Sim3 逆投影
 
 ### 1.2.4 PnPsolver PnP 求解器
 
+PnP (Perspective-n-Points) 问题指已知 n 个地图点的空间位置，以及这些点与图像内二维特征点的对应关系 (这些对应关系中可能存在外点)，求相机的位姿。PnP 可以通过 DLT (Direct Linear Transformation) 等求解析解，也可以构造最小二乘问题求迭代解，获得更高精度。
+
+ORB 中的 PnP 求解器基于 RANSAC + EPnP 算法。RANSAC (Random Sample Consensus) 用于剔除原始关联信息中的外点，EPnP 用于快速求解 PnP。RANSAC 需要多次调用 EPnP 进行初步估计与改善。
+
+EPnP 是一种非优化方法，复杂度为 O(n)，相比于其他非迭代法（复杂度为 O(n^5), O(n^8) 左右）速度更快、结果更精确、受外点影响更小。EPnP 源码见[链接](https://github.com/cvlab-epfl/EPnP)。
+
+EPnP 中将 n 个空间点用 4 个虚拟控制点的线性组合 Alpha 表示，将对相机位姿的估计转化为对控制点在相机系下的坐标估计，共 12 维。控制点选取原则如下，空间点重心为控制点 0，此点与其余三点构成空间点云主方向，即对点云坐标矩阵 SVD 分解 (主方向分析) 右正交矩阵 U 的列向量乘对应奇异值，注意结果不是单位向量，这样选择基底的结果更鲁棒。用 n 个空间点信息构建矩阵 M，控制点相机系坐标为 M 0 奇异值特征向量 (核向量) 的线性组合，线性组合的系数通过非线性最小二乘法求解。
+
+求得控制点相机坐标后，可以根据 Alpha 求出 n 个空间点相对于相机的坐标，这时相机位姿估计问题转化为 ICP (Iterative Closest Point)，可以基于 SVD 分解求解析结果。
+
+平面场景只需要使用三个控制点，但在代码中没有体现。
+
+EPnP 结果可以为迭代法提供良好初值，保证迭代法的快速收敛。迭代基于 LHM 方法，其残差项不是二维重投影误差，而是在三维空间中的误差，这样可以提高结果精度。EPnP 与 LHM 的组合同时兼顾了速度和精度。这在代码中也没有体现。
+
+> ORB 中 PnP 求解器是在 EPnP 的源码基础上修改的，代码风格相差较大。EPnP 源码只依赖于 OpenCV3 进行矩阵分解，其内部向量、矩阵等通过 double 数组实现。纯数组的矩阵计算看的令人窒息...
+> 更令人窒息的是，EPnP 的代码在核向量系数确定这部分和论文中叙述的不一致，实际以代码为准
+
+空间点坐标是控制点坐标的线性组合，控制点坐标是 M 矩阵核向量的线性组合
+
+EPnP 最少需要 4 对空间点-特征点匹配，RANSAC 随机选取初始点对时也是基于此
+
+#### 1.2.4.1 PnPsolver 中 EPnP 算法概述
+
+```
+1 
+```
+
+#### 1.2.4.2 PnPsolver 中 RANSAC 算法概述
+
+```
+1 
+```
+
 1
 
 ### 1.2.5 Sim3Solver Sim(3) 求解器
+
+类似于 PnP 求解器。
 
 1
 
