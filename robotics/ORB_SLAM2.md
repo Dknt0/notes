@@ -362,7 +362,7 @@ std::mutex mMutexFeatures;  // 地图点锁
 属于共视图相关函数。依据 KF 观测到的 MP 查询 共视 KF，统计、筛选共视数，填充共视向量。如果 KF 是第一次被添加，则将共视数最多的 KF 作为父 KF。
 
 ```
-1 遍历观测 MPi, 遍历每个 MPi 关联的 KFj, 统计共视数到共视映射 mKF
+1 遍历观测 MPi, 遍历每个 MPi 关联的 KFj, 统计共视数到共视映射 mConnectedKeyFrameWeights
 2 遍历共视映射 mKF，保留共视数超过 15 的 KFi 为共视关键帧，将当前 KF 添加到 KFi 共视图
 3 如果共视数均未超过 15，保留最大共视 KF，更新对方共视关系
 4 对共视数进行排序，同 `UpdateBestCovisibles`
@@ -613,63 +613,268 @@ std::vector<float> mvInvScaleFactor;  // 每一层的逆绝对尺寸比例  小�
 
 1
 
+#### 1.2.2.4 Fuse 地图点融合
+
+1
+
 ### 1.2.3 Optimizer 优化器
 
-ORB-SLAM 中优化器使用 g2o
+ORB-SLAM 中非线性最小二乘优化器使用 g2o。g2o 问题由边 (Edge) 和节点 (Vertex) 组成，ORB 中使用了 g2o 为 VSLAM 预先编写好的边类和节点类，存放于三方库文件夹中。
 
 > 有空可以试着改成 Ceres，需要将矩阵改为 Eigen，使用 double 类型
 
-1
+优化问题通常需要一个好的初值，以保证收敛到全局极小值、提高求解速度。ORB 中根据解析方法，例如 PnPSolver, Sim3Solver，求得初值，然后交给优化器处理。
 
-地图点作为因子图顶点时开启了边缘化选项，这是为什么？可能是在其增量小于一定阈值后视作固定点使用。
+关键帧对地图点的图优化构建过程中，每一个观测的信息矩阵与对应关键点所在的金字塔层数有关，这个层数并不能直接与地图点深度等价，相当于只考虑了特征提取的误差，而没有考虑深度相机本身的测量噪声。这里可能是一个改进点。
 
-关键帧对地图点的图优化构建过程中，每一个观测的信息矩阵与对应关键点所在的金字塔层数有关，这个层数并不能直接与地图点深度等价，相当于只考虑了特征提取的误差，而没有考虑深度相机本身的测量噪声。对于 Intel D435i 相机，这里可能会引入一个较大的误差。
+无论是解析方法、还是迭代方法，基于多对匹配关系的计算问题都对外点很敏感。优化方法中，可以在构建残差项时使用核函数，在一定程度上减小外点的影响，但核函数只能将外点残差对总目标函数的贡献从二次方变为接近线性，并不能消除其影响。因此需要一些外点剔除策略，例如基于残差阈值的外点剔除、RANSAC 方法。ORB 中，在解析求解器中使用了 RANSAC，在迭代优化器中使用了基于残差阈值的外点剔除：先进行初步优化，对每一个残差项分别计算误差，剔除外点，再次优化。
 
-根据解析方法求得初值，然后交给优化器处理
+ORB 中因子图构建时，对 MP Vertex 开启边缘化。这里的边缘化和 VINS 中的边缘化不同，VINS 中的边缘化指固定过去的 MP, KF 将其转换为先验信息，会导致海赛矩阵不再稀疏。而 ORB 中的边缘化指在求解增量时，利用类海赛矩阵的稀疏性，先求解相机位姿增量，再求解地图点增量，以加快求解速度。
 
-外点剔除策略：初步优化，对每一个残差项分别计算误差，剔除外点，再次优化。
+g2o::Edge 类中对 Vertex 的记录是以基类指 (`g2o::HyperGraph::Vertex`) 针保存的，在计算残差时需要从对应 Vertex 中获取参数当前估计值，此时会发生下行转换。理论上来讲，下行转换时应该使用 `dynamic_cast<DerivedT*>(BaseT*)` 运行时类型检查，以保证下行转换的安全，但 g2o 官方给出的代码中仍使用 `static_cast`。推测可能是为了节省时间，并且，Edge 中 Vertex 指针是严格按照序号存放的，一般不会有歧义。
 
-动态类型转换
+向 g2o 图模型添加 Vertex 和 Edge，需要为他们指定唯一的序号，之后可以通过这个序号从图模型获取 Vertex 和 Edge 的指针，这个序号可以不连续。添加顺序通常为先添加 Vertex，再添加 Edge。BA 问题中的 Vertex 有 KeyFrame 和 MapPoint 两种，且数量很多，ORB 中的做法是 KF Vertex 和 KF 的序号完全对应，MP Vertex 的序号为最大 KF 序号 + MP 序号，这样即可以避免顶点间的序号冲突，也可以在添加 Edge 时，按照序号轻松获取对应 KF, MP Vertex 的指针。
 
-1
+BA 问题有额外的 6 个或 7 个自由度，第七个自由度为单目尺度，剩余六个是地图的整体偏移和旋转。为了避免优化过程引来无意义的偏移，优化过程中会将第 0 个 KF (如果这一个优化问题中包括了第 0 帧) 设置为固定。
 
-使用到的 g2o 类
+按照是否存在右点坐标，KF 对 MP 的观测可以分为单目和双目两类，在构建 BA 问题时，会依据深度是否有效添加单目边和双目边两类边。
 
-顶点：
+g2o 有两种方式将边设置为外点，即不提供残差，不参与优化。调用 removeEdge。设置边的 level 为 1。
 
-```cpp
-g2o::VertexSE3Expmap  // g2o SE3 类
-g2o::VertexSBAPointXYZ  // g2o v3d 类
-g2o::VertexSim3Expmap  // g2o Sim3 类
-```
+**残差公式总结，单目重投影误差，双目重投影误差，位姿图误差**
 
-边：
+* 使用到的 g2o 类
 
 ```cpp
-g2o::EdgeSE3ProjectXYZ  // 空间点到成像平面
-g2o::EdgeStereoSE3ProjectXYZ  // 空间点到双目成像平面
-g2o::EdgeSE3ProjectXYZOnlyPose  // 空间点到成像平面 Motion-only
-g2o::EdgeStereoSE3ProjectXYZOnlyPose  // 空间点到双目成像平面 Motion-only
-g2o::EdgeSim3  // 本质图 Sim(3)
-g2o::EdgeSim3ProjectXYZ  // Sim3 投影
-g2o::EdgeInverseSim3ProjectXYZ  // Sim3 逆投影
+// Vertex
+g2o::VertexSE3Expmap  // g2o SE3 类  BA
+g2o::VertexSBAPointXYZ  // g2o v3d 类  BA
+g2o::VertexSim3Expmap  // g2o Sim3 类  PGO  这个类可以开启固定尺度选项，等价于 SE3
+// Edge
+g2o::EdgeSE3ProjectXYZ  // 空间点到成像平面  Mono-BA
+g2o::EdgeStereoSE3ProjectXYZ  // 空间点到双目成像平面  Stereo-BA
+g2o::EdgeSE3ProjectXYZOnlyPose  // 空间点到成像平面  Motion-only-BA
+g2o::EdgeStereoSE3ProjectXYZOnlyPose  // 空间点到双目成像平面  Motion-only-BA
+g2o::EdgeSim3  // 本质图 Sim(3)  PGO
+g2o::EdgeSim3ProjectXYZ  // Sim3 投影  Sim3-Opt
+g2o::EdgeInverseSim3ProjectXYZ  // Sim3 逆投影  Sim3-Opt
 ```
 
-1
+> 自己测试一下这些类的速度，和 Ceres 做比较
+> 尽量还是转 Ceres 吧，毕竟 Google 撑腰
 
-光束法平差
+#### 1.2.3.1 BundleAdjustment 光束法平差
 
-全局光束法平差
+`void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<MapPoint *> &vpMP, int nIterations, bool* pbStopFlag, const unsigned long nLoopKF, const bool bRobust)`
 
-局部光束法平差
+BA 优化，同时优化给定的 KeyFrame 位姿和 MapPoint 位置。使用开启边缘化的块求解器 `BlockSolver_6_3`，其中 KF 位姿不能启用边缘化，而 MP 必须开启边缘化，否则编译报错。
 
-单帧位姿优化
+开启强制停止标志位
 
-本质图优化
+没有外点剔除
 
-相似变换群优化
+g2o 配置如下：
 
-1
+```cpp
+g2o::SparseOptimizer optimizer;  // 图模型
+g2o::BlockSolver_6_3::LinearSolverType * linearSolver;  // 线性求解器  6*3
+linearSolver = new g2o::LinearSolverEigen<g2o::BlockSolver_6_3::PoseMatrixType>();
+g2o::BlockSolver_6_3 * solver_ptr = new g2o::BlockSolver_6_3(linearSolver);  // 块求解器
+g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);  // 图优化求解器
+optimizer.setAlgorithm(solver);
+// Vertex
+g2o::VertexSE3Expmap;  // Camera Pose
+g2o::VertexSBAPointXYZ;  // Point Pos. Marginalized on
+// Edge
+g2o::EdgeSE3ProjectXYZ;  // Mono-obs.
+g2o::EdgeStereoSE3ProjectXYZ  // Stereo-obs.
+```
+
+```
+1 配置求解器
+2 遍历优化 KF 集，添加 KF 顶点
+3 遍历优化 MP 集，添加 MP 顶点，开启边缘化  L
+  1 KF 对 MP 的观测为双目  ?
+    T 添加双目边
+    F 添加单目边
+4 优化指定轮数
+5 从优化结果恢复 KF, MP 数据
+```
+
+#### 1.2.3.2 GlobalBundleAdjustemnt 全局光束法平差
+
+`void Optimizer::GlobalBundleAdjustemnt(Map* pMap, int nIterations, bool* pbStopFlag, const unsigned long nLoopKF, const bool bRobust)`
+
+从 Map 中获取全部 MP, KP 调用 `BundleAdjustment` 求解。
+
+#### 1.2.3.3 LocalBundleAdjustment 局部光束法平差
+
+`void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap)`
+
+局部 BA 接收参数列表中的一个 KF，获取 KF 的共视 KF 作为局部 KF，获取局部 KF 观测到的 MP 作为局部 MP，观测到局部 MP，但不为局部 KF 的 KF 作为固定 KF。固定 KF 的顶点设置为固定，这本质上和 VINS 中的边缘化类似，但没有考虑先验的概率分布。上述局部 KP 与局部 MP 添加时需要判断不为坏帧、坏点，并且注意不能重复添加 KF。
+
+使用了基于残差阈值的外点剔除 (这里的外点指错误的观测关系，即因子图的边)。优化分为两步进行，初次优化 5 轮后，剔除外点，再次优化 10 轮。第二次优化结束后会再次检测外点，并清除外点对应 KF 和 MP 间的观测关系。
+
+开启强制停止标志位
+
+g2o 配置如下：
+
+```cpp
+g2o::SparseOptimizer optimizer;  // 图模型
+g2o::BlockSolver_6_3::LinearSolverType * linearSolver;  // 线性求解器
+linearSolver = new g2o::LinearSolverEigen<g2o::BlockSolver_6_3::PoseMatrixType>();
+g2o::BlockSolver_6_3 * solver_ptr = new g2o::BlockSolver_6_3(linearSolver);  // 块求解器
+g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);  // 图优化求解器
+optimizer.setAlgorithm(solver);
+// Vertex
+g2o::VertexSE3Expmap;  // Camera Pose
+g2o::VertexSBAPointXYZ;  // Point Pos. Marginalized on
+// Edge
+g2o::EdgeSE3ProjectXYZ;  // Mono-obs.
+g2o::EdgeStereoSE3ProjectXYZ  // Stereo-obs.
+```
+
+```
+1  从输入 KF 共视图获取局部 KF
+2  从局部 KF 观测关系获取局部 MP
+3  遍历局部 MP 观测关系，确定固定 KF
+4  求解器配置
+5  遍历局部 KF 集添加局部 KF 顶点
+6  遍历固定 KF 集添加固定 KF 顶点，开启固定
+7  遍历局部 MP 集，添加 MP 顶点，开启边缘化  L
+   1 KF 对 MP 的观测为双目  ?
+     T 添加双目边
+     F 添加单目边
+8  初步优化 5 轮
+9  计算残差，确定外点，设置外点边级别为 1
+10 再次优化 10 轮
+11 计算残差，确定外点，清除外点边对应的 KF, MP 间的观测关系
+12 从优化结果恢复 KF, MP 结果
+```
+
+#### 1.2.3.4 PoseOptimization 单帧位姿优化
+
+`int Optimizer::PoseOptimization(Frame *pFrame)`
+
+即 Motion-only BA。这个图优化问题中只有一个顶点，即待优化关键帧。因子图中的边为对地图点的观测，但这些边都是一元边，MP 坐标作为边的成员变量存在。对于单目观测和双目观测创建不同的边。
+
+单帧位姿优化为 Tracking 中接受到图像时的初步处理，因此观测中可能存在较多外点。在这个函数中，优化分为四步进行，每次优化 10 轮后都会剔除外点，再进行下一次优化。最后一次优化时取消了所有残差项的核函数。
+
+g2o 配置：
+
+```cpp
+g2o::SparseOptimizer optimizer;  // 图模型
+g2o::BlockSolver_6_3::LinearSolverType * linearSolver;  // 线性求解器
+linearSolver = new g2o::LinearSolverDense<g2o::BlockSolver_6_3::PoseMatrixType>();
+g2o::BlockSolver_6_3 * solver_ptr = new g2o::BlockSolver_6_3(linearSolver);  // 块求解器
+g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);
+optimizer.setAlgorithm(solver);
+// Vertex
+g2o::VertexSE3Expmap;
+// Edge
+g2o::EdgeSE3ProjectXYZOnlyPose;
+g2o::EdgeStereoSE3ProjectXYZOnlyPose;
+```
+
+```
+1 配置求解器
+2 添加 KF 顶点
+3 依据 KF 地图点观测添加单目或双目观测边  L
+  1 KF 对 MP 的观测为双目  ?
+    T 添加双目边
+    F 添加单目边
+4 进行四步优化  L
+  1 优化 10 轮
+  2 计算残差，确定外点，设置外点边级别为 1
+5 恢复 KF 位姿
+```
+
+#### 1.2.3.5 OptimizeEssentialGraph 本质图优化
+
+`void Optimizer::OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF, const LoopClosing::KeyFrameAndPose &NonCorrectedSim3, const LoopClosing::KeyFrameAndPose &CorrectedSim3, const map<KeyFrame *, set<KeyFrame *> > &LoopConnections, const bool &bFixScale)`
+
+ORB 中的本质图优化类似于位姿图优化，但只考虑共视数多于 100 的边。本质图优化只会在检测到回环时调用，图中的边包括本次检测出的回环边，以及生成树和本质图中的边，本质图中的边又包括历史检测出的回环边，以及共视数大于阈值的边。
+
+优化结束后，还需要同步更新地图点位置。
+
+**存疑**  这里给出的修正 Sim3 和未修正 Sim3 的作用不是很理解。在向图中添加 KF 顶点时候，会查询 `CorrectedSim3`，如果有 KF 信息则使用之。在向图添加观测边时，会查询 `NonCorrectedSim3`，如果有则使用之计算帧间变换。
+
+求解器配置：
+
+```cpp
+g2o::SparseOptimizer optimizer;  // 图模型
+g2o::BlockSolver_7_3::LinearSolverType * linearSolver =
+        new g2o::LinearSolverEigen<g2o::BlockSolver_7_3::PoseMatrixType>();  // 线性求解器
+g2o::BlockSolver_7_3 * solver_ptr= new g2o::BlockSolver_7_3(linearSolver);  // 块求解器
+g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);  // 图优化求解器
+// Vertex
+g2o::VertexSim3Expmap;
+// Edge
+g2o::EdgeSim3;
+```
+
+```
+1 配置求解器
+2 添加 KF 节点
+3 添加当前回环边
+4 添加本质图边，包括生成树、历史回环边、共视图边
+5 优化 20 轮
+6 依据结果恢复 KF 位姿
+7 修正地图点
+```
+
+#### 1.2.3.6 OptimizeSim3 相似变换群优化
+
+`int Optimizer::OptimizeSim3(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPoint *> &vpMatches1, g2o::Sim3 &g2oS12, const float th2, const bool bFixScale)`
+
+给出 KF1 MP 对 KF2 MP 的对应关系，求解帧间变换。这里给出两 KF 对 MP 的观测关系，即已知 MP 在 KF 相机坐标系下的位置，所以是 ICP 问题。但这个函数中对于残差的构建比较特别，一般的 ICP 问题残差为三维坐标差，设 KF1 观测到 MP1 坐标 $\bold{P_1}$，KF2 观测到 MP2 坐标 $\bold{P_2}$，帧间变换为 Sim3，则残差为：
+
+$$
+\bold{e}=\bold{P_1}-\bold{S_{12}}\bold{P_2}
+$$
+
+但 ORB 中的残差为互投影误差，即将 MP2 投影到 KF1，将 MP1 投影到 KF2，并与各自像素坐标做差。
+
+$$
+\begin{split}
+  \bold{e_1}=\bold{p_1}-\frac{1}{z}\bold{K}\bold{S_{12}}\bold{P_2}
+\end{split}
+\\
+\begin{split}
+  \bold{e_2}=\bold{p_2}-\frac{1}{z}\bold{K}\bold{S_{21}}\bold{P_1}
+\end{split}
+$$
+
+MP 顶点开启固定，只优化帧间变换。
+
+使用外点剔除，分别计算两个重投影误差，只要其中有一个超过阈值，则认为匹配点对是外点，从图中删除，并在最后清除这个地图点观测。
+
+g2o 配置：
+
+```cpp
+g2o::SparseOptimizer optimizer;  // 图模型
+g2o::BlockSolverX::LinearSolverType * linearSolver;  // 线性求解器
+linearSolver = new g2o::LinearSolverDense<g2o::BlockSolverX::PoseMatrixType>();
+g2o::BlockSolverX * solver_ptr = new g2o::BlockSolverX(linearSolver);  // 块求解器
+g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);  // 图优化求解器
+optimizer.setAlgorithm(solver);
+// Vertex
+g2o::VertexSim3Expmap;
+// Edge
+g2o::EdgeSim3ProjectXYZ;
+g2o::EdgeInverseSim3ProjectXYZ;
+```
+
+```
+1 求解器配置
+2 添加帧间变换 Sim3 顶点
+3 添加 MP 顶点，按照观测关系添加边
+4 初步优化 5 轮
+5 计算重投影误差，剔除内点
+6 再次优化 10 轮
+7 计算重投影误差，清除 KF 对 MP 的观测
+8 从优化结果获取帧间变换结果
+```
 
 ### 1.2.4 PnPsolver PnP 求解器
 
@@ -719,7 +924,7 @@ EPnP 最少需要 4 对空间点-特征点匹配，RANSAC 随机选取初始点�
 提出了一种对称尺度求解方法，可以不依赖姿态、位置，直接求解尺度 s12
 
 $$
-s_{12}=(\frac{\sum_{i=1}^{n}{\Vert r'_{1,i} \Vert}}{\sum_{i=1}^{n}{\Vert r'_{2,i} \Vert}})^{\frac{1}{2}}
+s_{12}=\sqrt{\frac{\sum_{i=1}^{n}{\Vert r'_{1,i} \Vert}}{\sum_{i=1}^{n}{\Vert r'_{2,i} \Vert}}}
 $$
 
 其中 $r'_{1,i}$, $r'_{2,i}$ 为空间点在 KF1, KF2 下的去中心化坐标
@@ -818,7 +1023,7 @@ ORB 2 中大部分矩阵用的是 cv::Mat，提供对 Eigen 接口。ORB 3 中�
 
 * 浮点精度问题
 
-ORB 中运算、数据存储大量使用单精度浮点数。对于大多数 32bit 嵌入式设备，double 运算无法做到实时，ORB 设计时可能是考虑了在嵌入式设备上的部署，所以选择了 float。但根据大多数开发者的经验，float 的精度似乎不太够，double 是衡量精度与速度后最好的选择。并且，执行 SLAM 的机器人上通常配备了不次于 PC 的 64bit 处理器，支持 double 运算指令，可以做到实时 (如 Vins-Fusion 成功在无人机上应用了)。
+ORB 中运算、数据存储大量使用单精度浮点数。对于大多数 32bit 嵌入式设备，double 运算无法做到实时，ORB 设计时可能是考虑了在嵌入式设备上的部署，所以选择了 float。但根据大多数开发者的经验，float 的精度似乎不太够，double 是衡量精度与速度后最好的选择。并且，执行 SLAM 的机器人上通常配备了不次于 PC 的 64bit 处理器，支持 double 运算指令，可以做到实时 (如 VINS-Fusion 成功在无人机上应用了)。
 
 从优化库的角度来说，由于 g2o 没有限制 float 或 double，类型完全由用户自己定义，所以在 g2o 中使用 float 不是问题。但 Ceres 仅支持 double, 并且其开发者在 issue 中回复 "Too much pain and suffering in single precision land."
 

@@ -1,4 +1,4 @@
-# Ceres 学习记录
+# Ceres 笔记
 
 > Google Ceres 非线性最小二乘优化库，十分的强大，十分用的到。
 > 
@@ -6,7 +6,7 @@
 > 
 > See: http://ceres-solver.org/
 > 
-> 我使用的是从 Ceres 2.0.0 源码 doc 中编译得到的文档。不同版本 Ceres 之间存在较大区别。
+> 注意，Ceres 2.1 版本前后存在较大区别。
 > 
 > Dknt 2023.11
 
@@ -15,8 +15,10 @@
 Ceres 主要用于解决约束条件下的多元非线性最小二乘问题：
 
 $$
-\begin{split}\min_{\mathbf{x}} &\quad \frac{1}{2}\sum_{i} \rho_i\left(\left\|f_i\left(x_{i_1}, ... ,x_{i_k}\right)\right\|^2\right) \\
-\text{s.t.} &\quad l_j \le x_j \le u_j\end{split}
+\begin{split}
+    \min_{\mathbf{x}} &\quad \frac{1}{2}\sum_{i} \rho_i\left(\left\|f_i\left(x_{i_1}, ... ,x_{i_k}\right)\right\|^2\right) \\
+    \text{s.t.} &\quad l_j \le x_j \le u_j
+\end{split}
 $$
 
 Ceres 也可以解决一般的无约束优化问题，但这不是我们使用他的主要目的。
@@ -199,15 +201,15 @@ bool Evaluate(double const* const* parameters,
 
 * `jacobians` 为雅可比，是一个二维数组。第一层为指针数组，这些数组指向每个参数块对应雅可比。第二层数组为雅可比矩阵，以 **row-major** 的方式存放在数组中。用户在计算雅可比时需要注意以下几点：
 
-* * $\text{jacobians}[i][r * \text{parameter\_block\_sizes}[i] + c]  = \frac{\displaystyle \partial \text{residual}[r]}{\displaystyle \partial \text{parameters}[i][c]}$ 
+* * $\text{jacobians}[i][r*\text{parameter{\_}block{\_}sizes}[i]+c]=\frac{\displaystyle \partial \text{residual}[r]}{\displaystyle \partial \text{parameters}[i][c]}$ 
   
   * jacobians 和 jacobians[i] 都有可能是 nullptr。**当传入空指针时，用户应忽略雅可比的计算**。例如：
   
   ```cpp
   ... // In function Evaluate()
   if (jacobians) {
-      if (jacobians[0]) { // Compute the first jacobian }
-      if (jacobians[1]) { // Compute the second jacobian }
+      if (jacobians[0]) { /* Compute the first  jacobian */ }
+      if (jacobians[1]) { /* Compute the second jacobian */ }
       ...
   }
   return true;
