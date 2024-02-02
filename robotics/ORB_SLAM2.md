@@ -1073,25 +1073,168 @@ $$
 
 ## 1.3 线程类
 
-三线程 + 显示
-
-1
+ORB-SLAM 中并行运行着三个线程：Tracking, LocalMapping, LoopClosing。这三个线程之间分工协作，互相依赖，保证了 SLAM 系统快速、精确地运行。三个线程均在 System 中创建，其中 Tracking 作为主线程，由输入的图像驱动，另外两个类分别在子线程中运行。
 
 ### 1.3.1 Tracking 追踪
 
-1
+追踪线程类，对输入图像进行特征提取，并与局部 MP 进行匹配，求解位姿，并判断当前帧是否满足成为关键帧的条件，如果满足，则传入 LocalMapping 进行进一步处理。
+
+Tracking 是 ORB 中运行速度最快的线程，由用户输入的图像数据驱动。
+
+Tracking 可以开启纯定位模式，这时将不会进行关键帧检测等操作。
+
+有 TrackReferenceKeyFrame 和 TrackWithMotionModel 两种追踪方式
+
+Tracking 中共有三个提取器，左图提取器、右图提取器、单目初始化提取器。后两者根据配置按需创建。其中，单目初始化提取器目标特征点数量是配置文件中的两倍，用于提高初始化成功率。
+
+Tracking 在主线程中运行，以图像数据驱动，所以没有 Run 函数。
+
+**重要成员变量**
+
+```cpp
+/* 单目初始化成员变量 */
+Frame mInitialFrame;  // 初始化参考帧
+std::vector<int> mvIniMatches;  // 当前 F KP 匹配到参考 F KP 按当前 F KP 索引，记录参考 F KP 序号
+std::vector<int> mvIniLastMatches;  // 当前 F KP 匹配到上一 F KP 按当前 F KP 索引，记录上一 F KP 序号
+std::vector<cv::Point2f> mvbPrevMatched;  // 上一次匹配 KP 坐标
+std::vector<cv::Point3f> mvIniP3D;  // 三角化 KP 坐标
+/* 帧位姿信息 用于记录轨迹 */
+list<cv::Mat> mlRelativeFramePoses;  // F 相对于 KF 位姿 TFfF  按 F 顺序索引
+list<KeyFrame*> mlpReferences;  // 参考 KF  按 F 顺序索引
+list<double> mlFrameTimes;  // 帧时间戳
+list<bool> mlbLost;  // 帧追踪状态
+/* 追踪过程变量 */
+int mnMatchesInliers;  // 当前帧匹配 KP 数量
+KeyFrame* mpLastKeyFrame;  // 上一 KF
+Frame mLastFrame;  // 上一 F
+unsigned int mnLastKeyFrameId;  // 上一个 KF id
+unsigned int mnLastRelocFrameId;  // 上一次重定位 F id
+cv::Mat mVelocity;  // 相机运动速度  六维
+KeyFrame* mpReferenceKF;  // 当前参考 KF
+std::vector<KeyFrame*> mvpLocalKeyFrames;  // 局部地图 KF
+std::vector<MapPoint*> mvpLocalMapPoints;  // 局部地图 MP
+list<MapPoint*> mlpTemporalPoints;  // 临时 MP
+```
+
+**互斥锁**
+
+```cpp
+
+```
+
+#### 1.3.1.1 构造函数
+
+构造函数中，利用 OpenCV 提供的工具读取 yaml 文件中的参数，初始化成员变量。并按照传感器创建了需要的 ORBextractor
+
+#### 1.3.1.2 GrabImage* 处理图像
+
+`cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft, const cv::Mat &imRectRight, double timestamp)`
+`cv::Mat Tracking::GrabImageRGBD(const cv::Mat &imRGB, const cv::Mat &imD, double timestamp)`
+`cv::Mat Tracking::GrabImageMonocular(const cv::Mat & im, double timestamp)`
+
+对图像进行类型转换后，根据传感器类型，使用对应的方法创建 Frame 对象，即完成特征提取、畸变矫正等操作，之后统一调用 Track 函数进行追踪。共有双目、深度、单目三种类型的处理函数，这些函数在 System 类的 TrackStereo, TrackRGBD, TrackMonocular 调用。
+
+输入图像可以为灰度图、彩色图，彩色图可以为三通道、四通道，通道顺序可以为 RGB 或 BGR。在 GrabImage* 函数中，不同类型的图像都会先转换为灰度图，再提取特征。
+
+常用的深度图像有两种格式：uint16, float。其中，前者单个像素占用 16 bits，后者占用 32 bits。使用 uint16 灰度图时，灰度值与深度之间比例由深度因子确定，即 1m 对应的像素值，是个大于一的整数。使用 float 深度图像时，通常像素值即为以米为单位的深度。ORB-SLAM 支持使用两种深度图像格式，当使用 float 深度图时，将配置文件中的 DepthMapFactor 设为 1.0。
+
+#### 1.3.1.3 Track 追踪
+
+`void Tracking::Track()`
+
+追踪一帧，是 Tracking 中最核心的函数。
+
+```
+1 
+```
 
 ### 1.3.2 LocalMapping 局部建图
 
-1
+ORB 中的中线程。
+
+
 
 ### 1.3.3 LoopClosing 回环检测
 
-1
+ORB 中的慢线程。
+
+
 
 ### 1.3.4 Viewer 显示
 
 1
+
+## 1.4 System 系统
+
+系统类是 ORB 向用户提供的接口，用户需要通过视觉词典路径、配置文件路径、传感器类型来初始化系统类，系统类会创建三线程。之后，向系统输入图像，追踪一帧。
+
+**重要成员变量**
+
+```cpp
+/* 数据库 */
+eSensor mSensor;  // 传感器类型  MONOCULAR=0, STEREO=1, RGBD=2
+ORBVocabulary* mpVocabulary;  // 视觉字典
+KeyFrameDatabase* mpKeyFrameDatabase;  // 关键帧数据库
+Map* mpMap;  // 地图
+/* 线程类与工具 */
+Tracking* mpTracker;  // 追踪器
+LocalMapping* mpLocalMapper;  // 局部建图器
+LoopClosing* mpLoopCloser;  // 回环检测器
+Viewer* mpViewer;  // 绘图器
+FrameDrawer* mpFrameDrawer;  // 帧绘制器  用于绘制 KF
+MapDrawer* mpMapDrawer;  // 地图绘制器  用于绘制 MP
+/* 线程 */
+// 主线程中执行 Tracking
+std::thread* mptLocalMapping;  // LocalMapping 线程
+std::thread* mptLoopClosing;  //  LoopClosing 线程
+std::thread* mptViewer;  // 显示线程
+/* Tracking 变量 */
+int mTrackingState;  // 追踪状态
+std::vector<MapPoint*> mTrackedMapPoints;  // 当前帧观测到的 MP
+std::vector<cv::KeyPoint> mTrackedKeyPointsUn;  // 当前帧去畸变 KP
+std::mutex mMutexState;  // 状态互斥锁
+```
+
+**互斥锁**
+
+```cpp
+std::mutex mMutexReset;  // 重置互斥锁
+std::mutex mMutexMode;  // 模式互斥锁
+std::mutex mMutexState;  // 状态互斥锁
+```
+
+### 1.4.1 构造函数
+
+System 构造函数中检查了配置文件路径，加载了视觉字典，初始化了 KeyFrameDatabase，创建了了 FrameDrawer 和 MapDrawer，创建了 Tracking，创建并运行了线程 LocalMapping 和 LoopClosing，按照配置创建并运行显示线程。之后，设置了三个主要线程之间的指针关系。
+
+### 1.4.2 TrackStereo 双目追踪
+
+三种追踪函数基本相同，具体步骤是在三个主要线程类中实现的。
+
+```
+1 重定位模式检查
+2 退出检查
+3 追踪双目图像  C `Tracking::GrabImageStereo`
+4 同步 Tracking 中当前帧信息
+```
+
+### 1.4.3 TrackRGBD 深度追踪
+
+```
+1 重定位模式检查
+2 退出检查
+3 追踪双目图像  C `Tracking::GrabImageRGBD`
+4 同步 Tracking 中当前帧信息
+```
+
+### 1.4.4 TrackMonocular 单目追踪
+
+```
+1 重定位模式检查
+2 退出检查
+3 追踪双目图像  C `Tracking::GrabImageMonocular`
+4 同步 Tracking 中当前帧信息
+```
 
 # 2 应用
 
