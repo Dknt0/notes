@@ -38,6 +38,8 @@ L 循环
 C 调用
 ```
 
+> 伪代码概括程序整体结构，不完全准确，忽略了许多细节
+
 ## 1.1 数据类
 
 ORB-SLAM 中核心数据库是 Map 与重定位数据库。底层由 KeyFrame, Frame, MapPoint 以及 DBow2 提供的类实现。
@@ -160,6 +162,8 @@ Frame 中不会对整张图像矫畸变，而是直接在畸变图像上提取�
 
 注意，虽然 Frame 有 MapPoint 观测向量成员变量，但 Frame 中并没有提供 MapPoint 观测的相关函数！
 
+注意，Frame 与 KeyFrame 的 BoW 描述向量和特征向量默认是不创建的，需要从外部调用 `ComputeBoW` 计算词袋信息。 
+
 **重要成员变量**
 
 ```cpp
@@ -178,7 +182,7 @@ std::vector<std::size_t> mGrid[FRAME_GRID_COLS][FRAME_GRID_ROWS];  // 去畸变�
 std::vector<MapPoint*> mvpMapPoints;  // 关联到特征点的地图点  注意 Frame 中没有填充此向量信息
 /* 词袋 */
 DBoW2::BowVector mBowVec;  // 词袋描述向量  map<单词序号, 单词值>
-DBoW2::FeatureVector mFeatVec;  // 视觉特征向量  map<节点id, 关键点序号集>
+DBoW2::FeatureVector mFeatVec;  // 视觉特征向量  map<节点id, 关键点序号集 vector<int>>
 ```
 
 Frame 中无互斥锁
@@ -310,6 +314,8 @@ ORB 中 KeyFrame 是 Map 的构成元素，用于确定局部地图范围、回�
 
 Frame 中并没有填充地图点观测向量，所以实际观测是在 KeyFrame 中进行的。KeyFrame 中提供了 MP 观测增、删、查、改相关的函数，比较简单，不多叙述。
 
+注意，Frame 与 KeyFrame 的 BoW 描述向量和特征向量默认是不创建的，需要从外部调用 `ComputeBoW` 计算词袋信息。 
+
 ORB 中 没有为共视图 (Covisibility Graph) 和生成树 (Spanning Tree) 设计专门的数据结构，他们都是通过 KeyFrame 中的成员变量实现的。二者都用于记录 KeyFrame 之间的关联关系，但关系的类型有所不同。生成树的边有向，且为共视图边的子集。
 
 共视图记录了 KeyFrame 与其他 KeyFrame 相互关联，用于回环检验、重定位、位姿图优化。一次共视指两个 KeyFrame 中各存在一个 KeyPoint 关联到同一个 MapPoint，全部的共视 KeyFrame 与共视数记录于 mConnectedKeyFrameWeights 映射中。初次创建 KeyFrame 时，需要通过 KeyFrame 与 MapPoint 间的双向查询确定共视关系，即遍历 KF1 观测到的 MP，再遍历每个 MP 关联的 KF，统计即可得到共视数。KeyFrame 间的共视数越大，关联越强，位姿估计越精确 (但共视过大也代表 KeyFrame 冗余)；对应地，如果两个 KeyFrame 间仅有几个共视 MapPoint，则这种弱共视关系无法提供可靠的信息。因此，需要对共视 KeyFrame 进行排序与筛选，建立共视关系时，用一个固定的共视阈值对共视 KF 进行筛选；排序通过 `UpdateBestCovisibles` 函数进行，每一次改变共视关系时都需要调用，结果存放于 mvpOrderedConnectedKeyFrames 和 mvOrderedWeights 向量中。
@@ -326,7 +332,7 @@ const std::vector<float> mvuRight;  // 特征点右图 u 坐标，双目点第�
 const std::vector<float> mvDepth;  // 深度 单目取-1
 const cv::Mat mDescriptors;  // 左图关键点描述子
 DBoW2::BowVector mBowVec;  // 视觉单词向量  map<单词序号, 单词值>
-DBoW2::FeatureVector mFeatVec;  // 视觉特征向量  map<节点id, 关键点序号集>
+DBoW2::FeatureVector mFeatVec;  // 视觉特征向量  map<节点id, 关键点序号集 vector<int>>
 std::vector<MapPoint*> mvpMapPoints;  // 关联到关键点的地图点 按关键点索引，未关联到地图点的关键点赋 nullptr  继承自 Frame, 但 Frame 并没有填充此向量信息
 /* 位姿 序号 时间 */
 long unsigned int mnId;  // 关键帧序号
@@ -566,7 +572,7 @@ ORB 中用于加速匹配的“已知信息”分为两种：几何投影信息�
 
 > 代码里的直方图分配有些奇怪，直方图保留了 30 列，但应该是没有用到所有的列。这个一致性应该只是近似成立，对于不同视角下的特征点，相机滚转角改变时，其灰度主方向的改变是不同的。
 
-2. **尺度一致性检验**，基于最佳、次佳匹配阈值（部分函数中使用）。投影匹配中会记录每个 MP 的最佳和次佳 KP 匹配，如果这两个 KP 来自金字塔同一层，则为最佳匹配 KP 添加这一 MP 观测
+2. **尺度一致性检验**，基于最佳、次佳匹配阈值（部分函数中使用）。投影匹配中会记录每个 MP 的最佳和次佳 KP 匹配，如果这两个 KP 来自金字塔同一层，且最佳匹配距离远小于次佳匹配，则为最佳匹配 KP 添加这一 MP 观测。
 
 3. **双目右点坐标检验**，投影匹配在比较 MP 与窗口内 KP 时，如果 KP 双目信息有效，则会限制 MP 投影右点坐标与 KP 右点坐标的差，如果大于窗口半径，则认为不是匹配对。
 
@@ -580,9 +586,9 @@ ORBmatcher 中包含的函数大概可以分为以下几类：
 
 3. 词袋匹配函数 `SearchByBoW`，包含两个重载
 
-4. 为初始化匹配 `SearchForInitialization`
+4. 初始化匹配 `SearchForInitialization`
 
-5. 为三角化匹配 `SearchForTriangulation`
+5. 三角化匹配 `SearchForTriangulation`
 
 6. 地图点融合 `Fuse`，包含两个重载
 
@@ -649,7 +655,7 @@ Fc 匹配到 KF 观测地图点，Tracking 中用于重定位
 
 将 KF 的观测地图点投影到 Fc 图像平面上，这里要求 Fc 有先验位姿
 
-使用姿态一致性检验。
+使用姿态一致性检验
 
 ```
 1 获取 Fc 位姿 Tcw
@@ -681,15 +687,80 @@ Fc 匹配到 KF 观测地图点，Tracking 中用于重定位
 
 #### 1.2.2.3 SearchByBow 词袋匹配函数
 
-1
+`int ORBmatcher::SearchByBoW(...)`
+
+利用视觉特征向量，寻找 F (KF) KP 与另一个 KF 观测到 MP 间的匹配。限制搜索范围为与属于同一视觉单词节点的特征点和地图点之间。
+
+视觉特征向量 mFeatVec 类型为 map<节点id, 关键点序号集 vector<int>>
+
+注意，F 与 KF 创建时不会自动计算词袋信息，如果需要使用词袋匹配函数，需要先对 F 或 KF 调用 ComputeBoW。
+
+##### 1.2.2.3.1 F to KF 词袋匹配
+
+`int ORBmatcher::SearchByBoW(KeyFrame* pKF,Frame &F, vector<MapPoint*> &vpMapPointMatches)`
+
+通过视觉字典节点限制，搜索 F 到 KF 观测到 MP 的匹配。结果返回为 F 的 KP 匹配到 KF 观测 MP，按 F KP 索引。
+
+使用姿态一致性检验
+
+使用最佳、次佳匹配限制
+
+用在 `Tracking::TrackReferenceKeyFrame()` 中
+
+```
+1 遍历视觉字典所有视觉词汇节点  L
+  1 遍历 F 中属于此节点的 KPi  L
+    1 在 KF 所有属于此节点的 KP 对应的 MP 中计与 KPi 的汉明距离，保留最佳和次佳匹配
+  2 如果最佳匹配远优于次佳匹配，记录之
+2 旋转一致性检验，保留直方图点数最多三个列中的匹配对
+```
+
+##### 1.2.2.3.2 KF to KF 词袋匹配
+
+`int ORBmatcher::SearchByBoW(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPoint *> &vpMatches12)`
+
+通过视觉字典节点限制，搜索 KF1 到 KF2 观测到 MP 的匹配。结果返回为 KF1 的 KP 匹配到 KF2 观测 MP，按 KF1 KP 索引。
+
+使用姿态一致性检验
+
+使用最佳、次佳匹配限制
+
+```
+1 遍历视觉字典所有视觉词汇节点  L
+  1 遍历 KF1 中属于此节点的 KPi  L
+    1 在 KF2 所有属于此节点的 KP 对应的 MP 中计与 KPi 的汉明距离，保留最佳和次佳匹配
+  2 如果最佳匹配远优于次佳匹配，记录之
+2 旋转一致性检验，保留直方图点数最多三个列中的匹配对
+```
 
 #### 1.2.2.4 Fuse 地图点融合
 
 1
 
+#### 1.2.2.5 SearchForInitialization 初始化匹配
+
+`int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f> &vbPrevMatched, vector<int> &vnMatches12, int windowSize)`
+
+按照 F1 KP 在 F2 中的预先匹配位置搜索在 F2 中的匹配 KP，结果返回 F1 对 F2 KP 的匹配，按照 F1 KP 顺序索引。仅在 `Tracking::MonocularInitialization` 中使用。对于 F1 中位于 0 层的 KP，根据 F1 KP 在 F2 中预匹配位置确定窗口，寻找窗口中最佳匹配点。实际调用时，F1 为参考帧，F2 为与参考帧相邻的下一帧，预匹配位置为 F1 KP 在 F1 中的位置，当相机运动速度不大时，相邻帧间特征点距离不会太远，可以在窗口中找到正确的匹配。
+
+姿态一致性检验。
+
+使用最佳、次佳匹配限制。
+
+```
+1 遍历 F1 中位于 0 层的 KP  L
+  1 获取 KPi 在预匹配位置附近窗口内的 KP 作为候选
+  2 遍历窗口内 KP，计算与 KPi 的汉明距离，保留最佳匹配与次佳匹配
+  3 如果最佳匹配距离小于阈值，记录这一对匹配
+  4 计算 KPi 与对应 F2 中 KP 的特征方向差，记录到旋转直方图中
+2 旋转一致性检验，保留直方图点数最多三个列中的匹配对
+```
+
 ### 1.2.3 Optimizer 优化器
 
 ORB-SLAM 中非线性最小二乘优化器使用 g2o。g2o 问题由边 (Edge) 和节点 (Vertex) 组成，ORB 中使用了 g2o 为 VSLAM 预先编写好的边类和节点类，存放于三方库文件夹中。
+
+Optimizer 是一系列优化方法的集合，使用时不会创建对象，而是直接调用成员函数。
 
 > 有空可以试着改成 Ceres，需要将矩阵改为 Eigen，使用 double 类型
 
@@ -1081,13 +1152,21 @@ ORB-SLAM 中并行运行着三个线程：Tracking, LocalMapping, LoopClosing。
 
 Tracking 是 ORB 中运行速度最快的线程，由用户输入的图像数据驱动。
 
-Tracking 可以开启纯定位模式，这时将不会进行关键帧检测等操作。
+Tracking 在主线程中运行，以图像数据驱动，所以没有 Run 函数。
 
-有 TrackReferenceKeyFrame 和 TrackWithMotionModel 两种追踪方式
+Tracking 可以开启纯定位模式，这时将不会进行关键帧检测等操作。
 
 Tracking 中共有三个提取器，左图提取器、右图提取器、单目初始化提取器。后两者根据配置按需创建。其中，单目初始化提取器目标特征点数量是配置文件中的两倍，用于提高初始化成功率。
 
-Tracking 在主线程中运行，以图像数据驱动，所以没有 Run 函数。
+> 追踪策略
+
+有 TrackReferenceKeyFrame, TrackWithMotionModel, TrackLocalMap, Relocalization 种追踪方式 **原理与使用场合区别**
+
+> 局部地图管理策略
+
+局部地图存放于 Tracking 中
+
+> 关键帧提取策略
 
 **重要成员变量**
 
@@ -1104,6 +1183,7 @@ list<KeyFrame*> mlpReferences;  // 参考 KF  按 F 顺序索引
 list<double> mlFrameTimes;  // 帧时间戳
 list<bool> mlbLost;  // 帧追踪状态
 /* 追踪过程变量 */
+// 有冗余
 int mnMatchesInliers;  // 当前帧匹配 KP 数量
 KeyFrame* mpLastKeyFrame;  // 上一 KF
 Frame mLastFrame;  // 上一 F
@@ -1116,15 +1196,11 @@ std::vector<MapPoint*> mvpLocalMapPoints;  // 局部地图 MP
 list<MapPoint*> mlpTemporalPoints;  // 临时 MP
 ```
 
-**互斥锁**
-
-```cpp
-
-```
+Tracking 成员变量中没有互斥锁
 
 #### 1.3.1.1 构造函数
 
-构造函数中，利用 OpenCV 提供的工具读取 yaml 文件中的参数，初始化成员变量。并按照传感器创建了需要的 ORBextractor
+构造函数中，利用 OpenCV 提供的工具读取 yaml 文件中的参数，初始化成员变量。并按根据感器类型创建需要的 ORBextractor。
 
 #### 1.3.1.2 GrabImage* 处理图像
 
@@ -1134,19 +1210,113 @@ list<MapPoint*> mlpTemporalPoints;  // 临时 MP
 
 对图像进行类型转换后，根据传感器类型，使用对应的方法创建 Frame 对象，即完成特征提取、畸变矫正等操作，之后统一调用 Track 函数进行追踪。共有双目、深度、单目三种类型的处理函数，这些函数在 System 类的 TrackStereo, TrackRGBD, TrackMonocular 调用。
 
-输入图像可以为灰度图、彩色图，彩色图可以为三通道、四通道，通道顺序可以为 RGB 或 BGR。在 GrabImage* 函数中，不同类型的图像都会先转换为灰度图，再提取特征。
+在 GrabImage* 函数中，不同类型的图像都会先转换为灰度图，再提取特征。输入图像可以为灰度图、彩色图，彩色图可以为三通道、四通道，通道顺序可以为 RGB 或 BGR。
 
-常用的深度图像有两种格式：uint16, float。其中，前者单个像素占用 16 bits，后者占用 32 bits。使用 uint16 灰度图时，灰度值与深度之间比例由深度因子确定，即 1m 对应的像素值，是个大于一的整数。使用 float 深度图像时，通常像素值即为以米为单位的深度。ORB-SLAM 支持使用两种深度图像格式，当使用 float 深度图时，将配置文件中的 DepthMapFactor 设为 1.0。
+GrabImageStereo 会分别使用左、右提取器提取图像中的特征点。
+
+GrabImageRGBD 接受一张彩色/灰度图和深度图，并对彩色/灰度图提取特征。常用的深度图像有两种格式：uint16, float。其中，前者单个像素占用 16 bits，后者占用 32 bits。使用 uint16 灰度图时，灰度值与深度之间比例由深度因子确定，即 1m 对应的像素值，是个大于一的整数。使用 float 深度图像时，通常像素值即为以米为单位的深度。ORB-SLAM 支持使用两种深度图像格式，当使用 float 深度图时，将配置文件中的 DepthMapFactor 设为 1.0。
+
+GrabImageMonocular 中，如果系统没有完成初始化，会调用初始化提取器提取双倍数量的特征；如果系统正常运行，则调用左图提取器。
 
 #### 1.3.1.3 Track 追踪
 
 `void Tracking::Track()`
 
-追踪一帧，是 Tracking 中最核心的函数。
+追踪一帧，是 Tracking 中最核心的函数。可以看作是一个状态机，根据系统状态，按照一定逻辑调用初始化、追踪、重定位等成员函数。
+
+```
+1 是否完成初始化  ?
+  F 按照传感器类型执行初始化  C `StereoInitialization` or `MonocularInitialization`
+  T 是否为纯定位模式  ?
+    F 追踪状态是否正常  ?
+      T 检查 MP 替换  C `CheckReplacedInLastFrame`
+      2 速度信息是否有效  ?
+        F 根据参考关键帧跟踪  C `TrackReferenceKeyFrame`
+        T 根据匀速运动模型追踪  C `TrackWithMotionModel`
+      F 执行重定位  C `Relocalization`
+    T 追踪状态是否正常  ?
+      F 执行重定位  C `Relocalization`
+      T 上一帧追踪到足够数量 MP  ?
+        T 速度信息是否有效  ?
+          F 根据参考关键帧跟踪  C `TrackReferenceKeyFrame`
+          T 根据匀速运动模型追踪  C `TrackWithMotionModel`
+        F 根据匀速运动模型追踪  C `TrackWithMotionModel`
+        2 执行重定位  C `Relocalization`
+        3 优先使用重定位结果
+  2 如果帧间追踪成功，追踪局部地图  C 'TrackLocalMap'
+  3 更新运动模型速度
+  4 关键帧判断  C `NeedNewKeyFrame` and `CreateNewKeyFrame`
+  5 按照局部地图匹配结果舍弃当前帧中的外点
+  6 如果初始化后 5 个 KF 内追踪失败，重置系统
+2 保存当前帧位姿信息，用于结束后恢复轨迹
+```
+
+#### 1.3.1.4 StereoInitialization 双目/深度初始化
+
+`void Tracking::StereoInitialization()`
+
+由于深度信息有效，双目/深度 SLAM 的初始化简单很多，不需要借助多视图集合。StereoInitialization 函数要求输入帧左图中提取到的特征点数多于 500 个，如果满足此要求，会通过当前帧创建初始 KF，并为所有深度有效的 KP 创建 MP，得到初始地图，这个初始地图也作为当前局部地图，在下一次匹配时使用。
+
+#### 1.3.1.5 MonocularInitialization & CreateInitialMapMonocular 单目初始化与初始地图创建
+
+`void Tracking::MonocularInitialization()`
+`void Tracking::CreateInitialMapMonocular()`
+
+单目初始化，依次接收两张单目相邻图像，如果这两张图像均能提取到足够数量的特征点，且成功三角化的特征点数目超过阈值，则创建初始地图，并执行一次全局 BA 优化。
+
+单目初始化 `MonocularInitialization` 的执行分为两个阶段，接收第一帧作为参考帧，接收第二帧（代码中命名为当前帧）与参考帧进行位姿求解与三角化，两个阶段以初始化器指针是否为空作为标志位。当 Track 第一次向初始化函数传入图像时，创建初始化器，返回。当 Track 再次调用此函数时进入第二阶段，由于相邻帧之间特征点位置相差不大，所以以参考帧中 KP 位置作为预匹配位置，调用特征匹配函数 `SearchForInitialization` 在预匹配位置附近窗口内寻找匹配 KP，之后以这个匹配关系为基础，调用初始化器初始化函数 `Initialize`，通过多视图几何方法计算帧间相对位姿，并三角化特征点，得到其空间坐标。之后，仅使用成功三角化的 KP 对，其他点对认为是外点。
+
+单目初始地图创建 `CreateInitialMapMonocular`，首先从参考帧、当前帧创建 KF，从三角化 KP 创建 MP，添加入地图，然后设置 KF 和 MP 见的观测关系，接着会进行一次全局 BA `GlobalBundleAdjustemnt`，接着以初始地图点位矢长度中位数为单位，对地图点坐标、当前帧坐标进行尺度归一化。至此初始化完成，设置成员变量后返回。
+
+单目初始化伪代码
+
+```
+1 阶段一，创建初始化器，记录参考帧
+2 阶段二，进行帧间特征点匹配  C `SearchForInitialization`
+3 调用初始化器进行初始化  C `Initialize`
+4 如果初始化成功，创建初始单目地图  C `CreateInitialMapMonocular`
+```
+
+单目初始地图创建伪代码
+
+```
+1 从初始帧和当前帧创建 KF，放入地图
+2 从三角化 KP 结果创建 MP，放入地图，设置 MP 与 KF 观测关系
+3 进行全局 BA 优化  C `GlobalBundleAdjustemnt`
+4 进行尺度归一化
+```
+
+#### 1.3.1.6 TrackReferenceKeyFrame 根据参考关键帧追踪
+
+1
+
+使用词袋搜索与参考关键帧 MP 的关联
+
+调用 Motion-only BA，初值为上一帧位姿
 
 ```
 1 
 ```
+
+#### 1.3.1.7 TrackWithMotionModel 根据运动模型追踪
+
+1
+
+使用投影匹配搜索与参考关键帧 MP 的关联
+
+调用 Motion-only BA，初值为预测位姿
+
+```
+1 
+```
+
+#### 1.3.1.8 Relocalization 重定位
+
+1
+
+#### 1.3.1.9 TrackLocalMap 追踪局部地图
+
+1
 
 ### 1.3.2 LocalMapping 局部建图
 
@@ -1236,7 +1406,17 @@ System 构造函数中检查了配置文件路径，加载了视觉字典，初�
 4 同步 Tracking 中当前帧信息
 ```
 
-# 2 应用
+# 2 过程分析
+
+帧的创建过程，地图点生成、关联？
+
+优化的步骤，初值源于何处？
+
+内存分析？
+
+1
+
+# 3 应用
 
 调用 System 类
 
@@ -1265,6 +1445,10 @@ ORB 中运算、数据存储大量使用单精度浮点数。对于大多数 32b
 如果要移植到 Ceres，则必须使用 double。
 
 可以添加宏定义，在 double 和 float 间切换。
+
+* 功能类的临时变量
+
+在功能类，如外点剔除优化、匹配筛选等函数中，常需要用一些临时变量来保存计算中间结果和状态，这些临时变量的数量与问题的规模成正比，且无法预先估计。如，在运行前，我们不会知道一个 KF 会与多少其他 KF 形成“良好”的共视关系。ORB 中会在数据类中为功能类、线程类中使用到的一些临时变量创建成员变量，如 KeyFrame 中有许多仅在 Tracking 或 LocalMapping 中用到的变量，用作标识（如标记当前 KF 正在参与哪一个 KF 的回环检测），或存放过程量。这样会浪费一定内存，但可以解决数据关联问题，加快运行速度。
 
 # 0 其他
 
