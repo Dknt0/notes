@@ -341,9 +341,9 @@ cv::Mat Twc;  // 位姿  相机相对世界
 cv::Mat Ow;  // 平移 相机相对世界 wc ==mtwc
 cv::Mat Cw;  // 双目相机中点
 /* 共视图相关 */
-std::map<KeyFrame*,int> mConnectedKeyFrameWeights;  // 共视帧与共视数 map<pKeyFrame, weight>
-std::vector<KeyFrame*> mvpOrderedConnectedKeyFrames;  // 有序共视帧
-std::vector<int> mvOrderedWeights;  // 有序权重
+std::map<KeyFrame*,int> mConnectedKeyFrameWeights;  // 共视映射 map<pKeyFrame, weight>  weight 代表共同观测到多少个地图点  包含全部共视关系
+std::vector<KeyFrame*> mvpOrderedConnectedKeyFrames;  // 有序共视关键帧向量  仅包含共视大于 15 的 KF
+std::vector<int> mvOrderedWeights;  // 有序权重向量  仅包含共视大于 15 的 KF
 /* 生成树与回环边相关 */
 KeyFrame* mpParent;  // 父关键帧
 std::set<KeyFrame*> mspChildrens;  // 子关键帧
@@ -651,7 +651,7 @@ Fc 匹配到上一帧 Fl 观测地图点，Tracking 中用于追踪前一帧
 
 `int ORBmatcher::SearchByProjection(Frame &CurrentFrame, KeyFrame *pKF, const set<MapPoint*> &sAlreadyFound, const float th , const int ORBdist)`
 
-Fc 匹配到 KF 观测地图点，Tracking 中用于重定位
+Fc 匹配到 KF 观测地图点，Tracking 中用于重定位。sAlreadyFound 中的 MP 不参与匹配。
 
 将 KF 的观测地图点投影到 Fc 图像平面上，这里要求 Fc 有先验位姿
 
@@ -735,11 +735,27 @@ Fc 匹配到 KF 观测地图点，Tracking 中用于重定位
 
 #### 1.2.2.4 Fuse 地图点融合
 
+本质上属于投影匹配。
+
+##### 1.2.2.4.1 F to MPs 局部地图点融合
+
+`int ORBmatcher::Fuse(KeyFrame *pKF, const vector<MapPoint *> &vpMapPoints, const float th)`
+
+在 LocalMapping 中用于寻找 KF 与近邻 KF MP 未检测出的关联关系，对冗余的 MP 进行融合。
+
+对于输入 MP 中没有被 KF 观测到的 MP，按照其在 KF 投影位置附近窗的口内，寻找最佳匹配的 KP。如果这个 KP 没有关联到 MP，则创建观测关系；如果 KP 已经关联到别的 MP，则融合新 MP 和旧 MP。
+
+融合过程中，使用 KF 观测数多的地图点继承少的那个，观测少的地图点被融合后置为坏点
+
+##### 1.2.2.4.1 F to MPs with Sim3 回环地图点融合
+
 1
 
 #### 1.2.2.5 SearchForInitialization 初始化匹配
 
 `int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f> &vbPrevMatched, vector<int> &vnMatches12, int windowSize)`
+
+不属于投影匹配，也不属于词袋匹配。
 
 按照 F1 KP 在 F2 中的预先匹配位置搜索在 F2 中的匹配 KP，结果返回 F1 对 F2 KP 的匹配，按照 F1 KP 顺序索引。仅在 `Tracking::MonocularInitialization` 中使用。对于 F1 中位于 0 层的 KP，根据 F1 KP 在 F2 中预匹配位置确定窗口，寻找窗口中最佳匹配点。实际调用时，F1 为参考帧，F2 为与参考帧相邻的下一帧，预匹配位置为 F1 KP 在 F1 中的位置，当相机运动速度不大时，相邻帧间特征点距离不会太远，可以在窗口中找到正确的匹配。
 
@@ -755,6 +771,20 @@ Fc 匹配到 KF 观测地图点，Tracking 中用于重定位
   4 计算 KPi 与对应 F2 中 KP 的特征方向差，记录到旋转直方图中
 2 旋转一致性检验，保留直方图点数最多三个列中的匹配对
 ```
+
+#### 1.2.2.6 SearchForTriangulation 三角化匹配
+
+`int ORBmatcher::SearchForTriangulation(KeyFrame *pKF1, KeyFrame *pKF2, cv::Mat F12, vector<pair<size_t, size_t> > &vMatchedPairs, const bool bOnlyStereo)`
+
+属于词袋匹配，额外检验对极约束。
+
+基于词袋匹配两 KF 的 KP，对匹配结果进行对极约束检查，仅保留通满足约束条件的匹配对。
+
+在 LocalMapping 中用于寻找新 KF 与近邻 KF KP 的关联关系，结果用于三角化创建新 MP，忽略 KF1 中已经匹配到 MP 的 KP
+
+#### 1.2.2.7 SearchBySim3 Sim3 匹配
+
+1
 
 ### 1.2.3 Optimizer 优化器
 
@@ -899,7 +929,7 @@ g2o::EdgeStereoSE3ProjectXYZ  // Stereo-obs.
 
 `int Optimizer::PoseOptimization(Frame *pFrame)`
 
-即 Motion-only BA。这个图优化问题中只有一个顶点，即待优化关键帧。因子图中的边为对地图点的观测，但这些边都是一元边，MP 坐标作为边的成员变量存在。对于单目观测和双目观测创建不同的边。
+即 Motion-only BA。这个图优化问题中只有一个顶点，即待优化关键帧。因子图中的边为对地图点的观测，但这些边都是一元边，MP 坐标作为边的成员变量存在。对于单目观测和双目观测创建不同的边。优化过程中会依据残差大小确定 MP 观测是否为外点，将结果记录于 F 的 mvbOutlier 成员变量中。
 
 单帧位姿优化为 Tracking 中接受到图像时的初步处理，因此观测中可能存在较多外点。在这个函数中，优化分为四步进行，每次优化 10 轮后都会剔除外点，再进行下一次优化。最后一次优化时取消了所有残差项的核函数。
 
@@ -1158,15 +1188,19 @@ Tracking 可以开启纯定位模式，这时将不会进行关键帧检测等�
 
 Tracking 中共有三个提取器，左图提取器、右图提取器、单目初始化提取器。后两者根据配置按需创建。其中，单目初始化提取器目标特征点数量是配置文件中的两倍，用于提高初始化成功率。
 
-> 追踪策略
+Tracking 中除了在创建单目初始地图时使用了全局 BA，其他优化全部为 Motion-only BA。
 
-有 TrackReferenceKeyFrame, TrackWithMotionModel, TrackLocalMap, Relocalization 种追踪方式 **原理与使用场合区别**
+**追踪方式**
 
-> 局部地图管理策略
+ORB Tracking 中有 TrackReferenceKeyFrame, TrackWithMotionModel, Relocalization, TrackLocalMap 四种追踪方式。其中 TrackReferenceKeyFrame, TrackWithMotionModel, Relocalization 完成两帧间匹配。TrackReferenceKeyFrame 匹配当前 F 和参考 KF，使用词袋匹配；TrackWithMotionModel 依据运动模型，匹配当前 F 和上一 F，使用投影匹配，可以完成 VIO 功能，代码中优先使用 TrackWithMotionModel 结果；当系统追踪失效时，使用 Relocalization 进行重定位，利用关键帧数据库搜索高相似度的候选 KF。当以上三种方法之一匹配成功是，会进行局部地图匹配 TrackLocalMap，进一步提高精度与地图点匹配数量。
+
+> 局部地图管理
+
+> 这个局部地图与 LocalMapping 的关系
 
 局部地图存放于 Tracking 中
 
-> 关键帧提取策略
+ORB 中提出了关键帧管理的启发式，具体见关键帧判断函数
 
 **重要成员变量**
 
@@ -1183,17 +1217,19 @@ list<KeyFrame*> mlpReferences;  // 参考 KF  按 F 顺序索引
 list<double> mlFrameTimes;  // 帧时间戳
 list<bool> mlbLost;  // 帧追踪状态
 /* 追踪过程变量 */
-// 有冗余
-int mnMatchesInliers;  // 当前帧匹配 KP 数量
-KeyFrame* mpLastKeyFrame;  // 上一 KF
+Frame mCurrentFrame;  // 当前帧
 Frame mLastFrame;  // 上一 F
+KeyFrame* mpReferenceKF;  // 当前参考 KF
+KeyFrame* mpLastKeyFrame;  // 上一 KF
+int mnMatchesInliers;  // 当前帧匹配 KP 内点数量  局部地图匹配与 KF 判断中使用
 unsigned int mnLastKeyFrameId;  // 上一个 KF id
 unsigned int mnLastRelocFrameId;  // 上一次重定位 F id
-cv::Mat mVelocity;  // 相机运动速度  六维
-KeyFrame* mpReferenceKF;  // 当前参考 KF
+// 运动模型
+cv::Mat mVelocity;  // 两帧间的相对位姿 上一帧相对当前帧  Tcccl
+list<MapPoint*> mlpTemporalPoints;  // 临时 MP  用于 VIO 帧间匹配
+// 局部地图
 std::vector<KeyFrame*> mvpLocalKeyFrames;  // 局部地图 KF
 std::vector<MapPoint*> mvpLocalMapPoints;  // 局部地图 MP
-list<MapPoint*> mlpTemporalPoints;  // 临时 MP
 ```
 
 Tracking 成员变量中没有互斥锁
@@ -1288,47 +1324,524 @@ GrabImageMonocular 中，如果系统没有完成初始化，会调用初始化�
 
 #### 1.3.1.6 TrackReferenceKeyFrame 根据参考关键帧追踪
 
-1
+`bool Tracking::TrackReferenceKeyFrame()`
 
-使用词袋搜索与参考关键帧 MP 的关联
+计算当前 F 与参考 KF 的相对位姿，当运动模型无效时使用。
 
-调用 Motion-only BA，初值为上一帧位姿
+首先进行词袋匹配，寻找 F 与参考 KF 对应 MP 间的关联关系，之后调用 `PoseOptimization` 进行 Motion-only BA，求解相对位姿。
+
+此追踪函数对匹配点数有要求，仅当词袋匹配点对多于 15，且剔除外点后点对多于 10 时有效。
+
+Motion-only BA 的初值为上一帧位姿。
+
+`PoseOptimization` 优化分为四步进行，每一步完成后都会依据残差大小进行外点检查，剔除不合理的 MP 观测。
 
 ```
-1 
+1 计算当前 F 词袋描述
+2 利用词袋信息，匹配当前 F 与参考 KF MP  C `SearchByBoW`
+3 Motion-only BA  C `PoseOptimization`
+4 依据优化中得到的外点结果清除对 MP 的观测
 ```
 
 #### 1.3.1.7 TrackWithMotionModel 根据运动模型追踪
 
-1
+`bool Tracking::TrackWithMotionModel()`
 
-使用投影匹配搜索与参考关键帧 MP 的关联
+以上一帧间位姿作为初值，计算当前 F 与上一 F 相对位姿态。
 
-调用 Motion-only BA，初值为预测位姿
+首先会调用 `UpdateLastFrame` 更新上一帧信息。如果系统运行在纯定位模式下，则为上一帧中没有匹配到 MP 的近双目点创建临时 MP。这样，即使当前帧完全无法匹配到地图中的 MP，也可以利用帧间匹配维持系统运行（此时为 VO 系统，无法消除累计误差）。
+
+在纯定位模式下，会统计当前帧匹配到地图 MP 和上一帧 MP （包括临时 MP）的数量，如果与上一帧匹配数量多于 20，则定位成功；如果与地图的匹配小于 10 则说明相机运动到了新的未知区域。
+
+使用投影匹配搜索与上一帧 MP 的关联
+
+Motion-only BA 的初值为预测位姿
 
 ```
-1 
+1 更新上一帧信息，纯定位模式下创建临时点  C `UpdateLastFrame`
+2 投影匹配计算当前 F 到上一 F MP 的匹配  C `SearchByProjection`
+3 Motion-only BA  C `PoseOptimization`
+4 依据优化中得到的外点结果清除对 MP 的观测
 ```
 
 #### 1.3.1.8 Relocalization 重定位
 
-1
+`bool Tracking::Relocalization()`
+
+重定位在整个 Map 中寻找与当前 F 最佳匹配的 KF，并估计当前 F 位姿。
+
+运行重定位时，系统已经完全失去当前速度、参考关键帧等有效先验信息，需要遍历数据库中全部 KF，寻找最佳参考 KF，代码中使用了一系列方法提高匹配速度与精度。
+
+基于相似性筛选 KF。首先通过 KeyFrameDatabase 遍历全部 KF，利用视觉描述向量寻找一组候选关键帧，这个过程不涉及 KP 的匹配，速度较快。
+
+基于特征匹配筛选 KF。之后通过词袋匹配函数寻找当前 F 与候选 KF MP 间的关联，如果匹配数多于 15，则为 KF 创建 PnPsolver，准备 RANSAC 求解。
+
+> 这里先使用了 SearchByBoW 并使用小阈值，说明词袋匹配函数是更严格的，给出的匹配结果更少。在先验相对位姿下，投影匹配能给出更多匹配结果。
+> **这里需要测试**
+
+在第二轮候选 KF 中，循环使用 RANSAC 求解当前 F 位姿，将求解结果作为初值，进行 Motion-only BA。如果内点数多于 50，认为重定位成功，返回。如果内点数大于 10 小于 50，可能是因为词袋匹配没有给出全部匹配对，以优化结果为基础运行投影匹配，如果匹配对超过 50 个，则再次运行 Motion-only BA。如果再次优化的内点仍然少于 50 对，则再次进行投影匹配，再次优化。
+
+```
+1 筛选重定位候选 KF  C `DetectRelocalizationCandidates`
+2 词袋匹配再次筛选候选 KF  C `SearchByBoW`
+3 循环执行每个候选 KF PnPsolver RANSAC 迭代，直到与某 KF 内点多于 50  L
+  1 运行 RANSAC 迭代  C `PnPsolver::iterate`
+  2 执行 Motion-only BA  C `PoseOptimization`
+  3 内点多于 50 成功。多于 10 执行下一步
+  4 投影匹配 F 与 KF  C `SearchByProjection`
+  5 若匹配多于 50 执行 Motion-only BA  C `PoseOptimization`
+  6 内点多于 50 成功。多于 30 小于 50 执行下一步
+  7 小窗口投影匹配 F 与 KF  C `SearchByProjection`
+  8 多于 50 成功，小于 30 忽略
+```
 
 #### 1.3.1.9 TrackLocalMap 追踪局部地图
 
-1
+`bool Tracking::TrackLocalMap()`
+
+当参考帧估计、运动模型估计或重定位成功后，执行局部地图追踪，以获得更高精度。局部地图会为每一个 F 单独创建。
+
+有效匹配判断在刚完成重定位 1s 内使用高阈值，更加严格。
+
+```
+1 更新局部地图  C `UpdateLocalMap`
+2 匹配当前 F 与局部 MP  C `SearchLocalPoints`
+  1 检查局部 MP 中是否有未匹配的 MP 在当前 F 视角截锥体内
+  2 若有，进行投影匹配  C `SearchByProjection`
+3 进行 Motion-only BA  C `PoseOptimization`
+4 统计有效 MP 匹配，如果高于阈值，匹配成功
+```
+
+#### 1.1.1.10 UpdateLocalMap 更新局部地图
+
+`void Tracking::UpdateLocalMap()`
+
+`void Tracking::UpdateLocalKeyFrames()`
+
+`void Tracking::UpdateLocalPoints()`
+
+更新局部地图。分为两步实现，更新局部 KF，更新局部 MP。在 `TrackLocalMap` 首先调用此函数，再进行追踪。调用此函数是，当前 F 已经通过参考帧估计、运动模型轨迹或重定位确定了先验位姿和 MP 匹配关系。
+
+局部地图是为每一 F 单独确定的，首先利用 MP 观测关系，寻找与当前 KF 的共视 KF 添加到局部地图中，并将这些 KF 生成树中的父子 KF 与共视图中的 10 个最佳共视 KF 添加到局部地图中 (即两层共视 KF)。与当前 F 最佳共视的 KF 被选为参考 KF，将在下一帧估计中使用。
+
+之后，将局部 KF 的 MP 观测作为局部 MP。
+
+```
+1 更新局部 KF  C `UpdateLocalKeyFrames`
+  1 从当前 F MP 寻找共视 KF，加入局部地图
+  2 将共视 KF 的共视 KF、生成树相邻 KF 添加到局部地图中
+2 更新局部 MP  C `UpdateLocalPoints`
+  1 遍历局部 KF 的 MP，加入局部地图
+```
+
+#### 1.1.1.11 NeedNewKeyFrame & CreateNewKeyFrame 关键帧判断与创建
+
+`bool Tracking::NeedNewKeyFrame()`
+
+`void Tracking::CreateNewKeyFrame()`
+
+KF 判断的基本策略如下：
+
+纯定位模式下不需要创建 KF
+
+当 LocalMapping 被 LoopClosing 中断时，不创建 KF
+
+如果距离上次 KF 创建没有走过关键帧最大间隔帧数，不创建 KF
+
+如果以上皆通过，使用启发式判断：
+
+条件1a  距离上次创建 KF 已超过最大创建间隔
+
+条件1b  距离上次创建 KF 已超过最小创建间隔，且 LocalMapping 接收 KF
+
+条件1c  非单目下，匹配到 MP 过少或需要添加近双目点
+
+条件2  匹配到 MP 过少或需要添加近双目点，相比下 VO 匹配点更多
+
+如果 1a 1b 1c 中有一个成立，且 2 成立，尝试创建关键帧
+
+> 即使 LocalMapping 不接受 KF，也可以添加到队列
+
+如果需要创建 KF，则通过当前 F 创建 KF。在非单目模式下，为近双目点创建 MP。如果近双目点数量少于 100，则额外为最近的双目点创建 MP，使观测到的 MP 总数为 100。
 
 ### 1.3.2 LocalMapping 局部建图
 
-ORB 中的中线程。
+Tracking 中完成关键帧判断后调用 InsertKeyFrame 将新创建的 KF 传给 LocalMapping。剔除观测不佳的 MP，三角化创建新 MP，匹配新 KF、MP 与局部地图，进行局部 BA 优化，进行局部 KF 剔除。完成上述操作后，会将新 KF 传入 LoopClosing，进行闭环检测。
 
+在双目/深度模式下，Tracking 会通过深度信息直接为近双目点创建 MP，在 LocalMapping 中会通过三角化为其他存在匹配关系的 KP 创建 MP，并添加到地图中。
 
+LocalMapping 是 ORB-SLAM 中的中速线程，每次执行后会有 3000us 延时。
+
+LocalMapping 中会完成 KF 和 MP 的剔除。
+
+ORB-SLAM 中没有类似于滑动窗口的局部地图，局部地图是利用共视关系对每一个 KF 单独生成的，大小不定。
+
+> LocalMapping 的中断关系。
+
+插入新 KF 会终端 BA。
+
+新增添 MP 集的添加与剔除
+
+优先添加新 KF
+
+**重要成员变量**
+
+```cpp
+std::list<KeyFrame*> mlNewKeyFrames;  // 新 KF 队列  Tracking 中创建 KF 后添加到这里
+KeyFrame* mpCurrentKeyFrame;  // 当前 KF
+std::list<MapPoint*> mlpRecentAddedMapPoints;  // 新增添 MP 集  MP 剔除在此集合中进行
+std::mutex mMutexNewKFs;  // 新增 KF 互斥锁
+```
+
+**互斥锁**
+
+```cpp
+std::mutex mMutexReset;  // 重置互斥锁
+std::mutex mMutexFinish;  // 终止互斥锁
+std::mutex mMutexNewKFs;  // 新增 KF 互斥锁
+std::mutex mMutexStop;  // 暂停互斥锁
+std::mutex mMutexAccept;  // 接收 KF 互斥锁
+```
+
+#### 1.3.2.1 Run 运行
+
+`void LocalMapping::Run()`
+
+LocalMapping 线程函数，System 中创建线程时将此函数传入，循环执行。此函数不断查询并处理新增 KF 队列，同时检查暂停、重置、终止等标志位，并完成相应操作。
+
+Run 循环中有 3000us 的延时，在此期间接受 KF。但即使 LocalMapping 处于不接受 KF 的状态，Tracking 也会按照启发式的结果添加新 KF 到队列，具体参考 `NeedNewKeyFrame`
+
+```
+1 无限循环  L
+  1 设置拒绝接受 KF
+  2 队列中是否存在 KF  ?
+    T 处理新 KF  C `ProcessNewKeyFrame`
+    2 剔除 MP  C `MapPointCulling`
+    3 创建新 MP  C `CreateNewMapPoints`
+    4 如果队列为空，依据共视关系搜索、融合 MP  C `SearchInNeighbors`
+    5 KF 队列空且没有暂停请求  ?
+      T 执行局部 BA  C `LocalBundleAdjustment`
+      2 关键帧剔除  C `KeyFrameCulling`
+    6 将关键帧传入闭环检测器  C `LoopClosing::InsertKeyFrame`
+  3 暂停检查
+  4 重置检查
+  5 恢复接受 KF
+  6 终止检查
+  7 延时 3000us
+```
+
+#### 1.3.2.2 ProcessNewKeyFrame 处理新 KF
+
+`void LocalMapping::ProcessNewKeyFrame()`
+
+处理一帧新 KF，更新 MP 与新增 KF 的关联，计算新 KF 共视关系，将新 KF 添加到地图。
+
+```
+1 取队首 KF，计算词袋表达
+2 遍历当前 KF 的 MP 观测  L
+  1 如果 MP 没有记录当前 KF 的观测，创建之，并更新法线、深度、描述子
+  2 如果 MP 记录了当前 KF 的观测，说明此 MP 是 Tracking 中创建的近双目点，将此 MP 添加到新增 MP 集
+3 更新 KF 共视图关系
+4 添加当前 KF 到地图
+```
+
+#### 1.3.2.3 MapPointCulling 剔除 MP
+
+`void LocalMapping::MapPointCulling()`
+
+剔除局部范围内观测效率不佳的 MP。这个函数中按照一定条件删除新增 MP 集 `mlpRecentAddedMapPoints` 中的地图点；同时会按照一定条件将 MP 设置为坏点，但并不会将 MP 从 Map 中删除。
+
+剔除条件：
+
+1. 若 MP 为坏点，从新增 MP 集中清除之，否则
+2. 若 MP 检测比小于 0.25 的，从新增 MP 集中清除之，设置为坏点，否则
+3. 若 MP 连续两帧没有被观测到，且 KF 观测次数小于阈值（单目 2，其余 3），从新增 MP 集中清除之，设置为坏点，否则
+4. 若 MP 连续三帧没有被观测到，从新增 MP 集中删除
+
+注意上述条件中，第四条仅将 MP 从局部 MP 中删除，但保留在地图中。
+
+#### 1.3.2.4 CreateNewMapPoints 三角化创建新 MP
+
+`void LocalMapping::CreateNewMapPoints()`
+
+利用 KF 共视关系三角化恢复当前 KF KP 的深度，并创建新 MP。
+
+在当前 KF 的共视 KF 中，寻找没有对应到 MP 的 KP 匹配，对满足要求的 KP 对三角化恢复深度，创建新 MP
+
+对于不同条件的 KP 匹配对，采用不同方法恢复深度。
+
+当同时满足如下条件时，使用三角化计算 MP 空间坐标
+
+1. 观测方向余弦 (KF1 KF2 对 MP 观测方向的夹角) 小于双目视差余弦 (以双目基线为对直角边，深度为侧直角边构成直角三角形顶角的余弦值)。代表 MP 在两帧 KF 图像上的视差大于在任意双目 KF 上的视差，通过三角化能得到更准确的结果。
+
+> 单目情况下双目视差余弦赋大于 1 的值，即忽略与之相关的比较
+
+1. 观测方向余弦大于 0，代表两帧从同一个方向观测到 MP。特征点只在空间的某个方向上有效，且能被检测到。
+
+2. 观测方向余弦小于阈值，对应观测方向角度大于 1.14 度，保证三角化能成功。观测方向角过小，代表 MP 相比当前视差位于无穷远处，数值不稳定
+
+如果不满足三角化条件，则使用双目视差余弦比较小的 KF 中 KP 深度计算 MP 空间位置。如果深度无效，忽略。
+
+三角化方法与 Initializer 中相似，这里使用像素归一化坐标与相机位姿，Initializer 中使用像素坐标与相机投影矩阵，本质相同，通过 SVD 分解求最小二乘结果
+
+假设 KF1 与 KF2 位姿分别为：
+
+$$
+T{cw1} =
+\begin{bmatrix}
+  R_{cw1} & t_{cw1} \\
+  0 & 1
+\end{bmatrix} =
+\begin{bmatrix}
+  t_{11}  \\ t_{12}  \\ t_{13}  \\ t_{14}
+\end{bmatrix}
+$$
+
+$$
+T{cw2} =
+\begin{bmatrix}
+  R_{cw2} & t_{cw2} \\
+  0 & 1
+\end{bmatrix} =
+\begin{bmatrix}
+  t_{21}  \\ t_{22}  \\ t_{23}  \\ t_{24}
+\end{bmatrix}
+$$
+
+其中 $t$ 为 4*1 行向量
+
+则 MP 在两个 KP 中的归一化齐次坐标满足投影关系
+
+$$
+p_{1} = \begin{bmatrix}
+  x_{1} \\ y_{1} \\ 1
+\end{bmatrix} = \frac{1}{z} \begin{bmatrix}
+  R_{cw1} & t_{cw1}
+\end{bmatrix} P = \frac{1}{z} \begin{bmatrix}
+  t_{11}  \\ t_{12}  \\ t_{13}
+\end{bmatrix} \begin{bmatrix}
+  X \\ Y \\ Z \\ 1
+\end{bmatrix}
+$$
+
+其中 $x_{1}$, $y_{1}$ 为像素归一化平面坐标，$P$ 为 MP 空间位置齐次坐标
+
+同理在 KF2 中
+
+$$
+p_{2} = \begin{bmatrix}
+  x_{2} \\ y_{2} \\ 1
+\end{bmatrix} = \frac{1}{z} \begin{bmatrix}
+  t_{21}  \\ t_{22}  \\ t_{23}
+\end{bmatrix} \begin{bmatrix}
+  X \\ Y \\ Z \\ 1
+\end{bmatrix}
+$$
+
+对 KF1 投影方程等式两边同时叉乘 $p_{1}$
+
+$$
+p_{1} \times p_{1} = p_{1} \times \frac{1}{z} \begin{bmatrix}
+  t_{11}  \\ t_{12}  \\ t_{13}
+\end{bmatrix} P
+$$
+
+$$
+0 = \frac{1}{z} \begin{bmatrix}
+  0 & -1 & y_{1} \\
+  1 & 0 & -x_{1} \\
+  -y_{1} & x_{1} & 0
+\end{bmatrix} \begin{bmatrix}
+  t_{11}  \\ t_{12}  \\ t_{13}
+\end{bmatrix} P
+$$
+
+得到：
+
+$$
+\begin{bmatrix}
+  y_{1} t_{13} - t_{12} \\
+  x_{1} t_{13} - t_{11} \\
+  x_{1} t_{12} - y_{1} t_{11}
+\end{bmatrix} P = 0
+$$
+
+同理对 KF2 有：
+
+$$
+\begin{bmatrix}
+  y_{2} t_{23} - t_{22} \\
+  x_{2} t_{23} - t_{21} \\
+  x_{2} t_{22} - y_{2} t_{21}
+\end{bmatrix} P = 0
+$$
+
+分别取上两式中的前两行，构成齐次线性方程组：
+
+$$
+\begin{bmatrix}
+  y_{1} t_{13} - t_{12} \\
+  x_{1} t_{13} - t_{11} \\
+  y_{2} t_{23} - t_{22} \\
+  x_{2} t_{23} - t_{21}
+\end{bmatrix} P = AP = 0
+$$
+
+对 $A$ 进行 SVD 分解
+
+$$
+A^{T}A = UDV^{T}
+$$
+
+其中 $V$ 的最后一行即为 P，对应最大奇异值的特征向量
+
+> 原理未知，SVD 分解好神奇
+
+创建新 MP 需要满足的要求如下：
+
+1. MP 位于两 KF 前方
+2. MP 在两 KF 中的重投影误差不应该太大
+3. 尺度一致性，在两 KF 中对应 KP 的层数比例应该和相对两 KF 的距离相关
+
+```
+1 从共视图获取当前 KF 近邻 KF
+2 遍历近邻 KF  L
+  1 检查帧间距离是否过小
+  2 计算 KF 间基础矩阵，用于检查对极约束  C `ComputeF12`
+  3 基于词袋信息匹配帧间 KP，并检查对极约束  C `SearchForTriangulation`
+  4 计算观测方向余弦
+  5 计算双目视差余弦
+  6 如果视差足够，三角化恢复深度，否则使用有效的双目深度
+  7 检验 MP 是否位于 KF 前方
+  8 检验 MP 在 KF 中的重投影误差
+  9 检验尺度一致性
+  10 若上述皆通过，创建 MP，更新观测信息，并添加到地图和新增 MP 集
+```
+
+#### 1.3.2.5 SearchInNeighbors 近邻地图点匹配融合
+
+`void LocalMapping::SearchInNeighbors()`
+
+将当前 KF 与局部地图 MP 进行匹配，对重复的 MP 进行融合。
+
+LocalMapping 中新增 KF 后，如果队列中暂时没有新 KF 到来，调用此函数，进一步寻找当前 KF 与周围 MP 的观测关系，并对冗余地图点进行融合。
+
+```
+1 获取目标近邻 KF 集，由当前 KF 近邻、近邻的近邻组成
+2 将当前 KF MP 投影到近邻 KF 中进行融合  C `Fuse`
+3 整合近邻 KF MP 并投影到当前 KF 中进行融合  C `Fuse`
+4 更新地图点观测信息，更新当前 KF 共视关系
+```
+
+#### 1.3.2.6 KeyFrameCulling 局部关键帧剔除
+
+`void LocalMapping::KeyFrameCulling()`
+
+关键帧剔除策略如下，在当前 KF 近邻中 (不包含当前 KF)，如果某 KF 观测到的 MP 中 90% 以上被其他至少 3 个 KF 在同一尺度、或更大的尺度 (对应更小的金字塔层数) 下观测到，则认为这一 KF 冗余。
+
+非单目情况下仅对近双目点进行统计
 
 ### 1.3.3 LoopClosing 回环检测
 
-ORB 中的慢线程。
+LocalMapping 检测新 KF 与数据库中 KF 的闭环关系，并完成位姿图优化和全局 BA
+
+回环 KF 的检测和重定位是类似的操作。
+
+LoopClosing 优先完成当前 KF 的闭环检测，与 LocalMapping 不同，新增 KF 可以等待。
 
 
+KFDatabase 中是否存在已经被剔除的 KF
+
+1
+
+LoopClosing 中定义了两个数据结构，如下
+
+```cpp
+typedef pair<set<KeyFrame*>,int> ConsistentGroup;  // 共视组  pair<共视 KF 集合, 累积一致性>  共视组累积一致性指包含相同 KF 的共视组的数量
+typedef map<KeyFrame*, g2o::Sim3, std::less<KeyFrame*>, 
+  Eigen::aligned_allocator<std::pair<KeyFrame *const, g2o::Sim3>>> KeyFrameAndPose;
+    // 位姿映射  map<KF, Sim3, 比较器, 内存申请器>
+```
+
+其中，共视组代表某 KF 与其全部共视 KF 构成的集合，数据结构 ConsistentGroup 第二个位置是此共视组累积一致性。两个共视组具有一致性，则这两个共视组中至少有一个相同的 KF，说明这两个共视组来自地图中的同一区域。累积一致性指在这个共视组附近连续几帧检测出一致性，累积一致性越高，说明在地图的这个区域越有可能存在回环。
+
+**重要成员变量**
+
+```cpp
+/* 待检测 KF 相关 */
+std::list<KeyFrame*> mlpLoopKeyFrameQueue;  // 回环 KF 队列
+KeyFrame* mpCurrentKF;  // 当前 KF
+KeyFrame* mpMatchedKF;  // 回环匹配 KF?
+/* 共视组相关 */
+float mnCovisibilityConsistencyTh;  // 共视一致性阈值  =3
+std::vector<ConsistentGroup> mvConsistentGroups;  // 历史共视组集  仅在回环检测中使用  vector<pair<共视 KF 集合, 与其他组的共视数量>>  数据存储策略？
+std::vector<KeyFrame*> mvpEnoughConsistentCandidates;  // 满足一致性阈值的候选 KF 集
+/* 当前 KF 回环相关 */
+std::vector<KeyFrame*> mvpCurrentConnectedKFs;  // 当前 KF 近邻 KF 集?
+std::vector<MapPoint*> mvpCurrentMatchedPoints;  // 当前 KF MP 匹配集?
+std::vector<MapPoint*> mvpLoopMapPoints;  // 闭环 MP 集?
+cv::Mat mScw;  // Scw
+g2o::Sim3 mg2oScw;  // 优化后 Scw
+```
+
+**互斥锁**
+
+```cpp
+std::mutex mMutexLoopQueue;  // 回环队列互斥锁
+std::mutex mMutexReset;  // 重置互斥锁
+std::mutex mMutexFinish;  // 终止互斥锁
+std::mutex mMutexGBA;  // 全局 BA 的互斥锁
+```
+
+#### 1.3.3.1 Run 运行
+
+`void LoopClosing::Run()`
+
+LoopClosing 线程函数
+
+```
+1 无限循环  L
+  1 队列中是否存在 KF  ?
+    T 回环检测  C `DetectLoop`
+      T 求解 Sim3  C `ComputeSim3`
+        T 回环修正  C `CorrectLoop`
+  2 重置检查
+  3 终止检查
+  4 延时 5000us
+```
+
+#### 1.3.3.2 DetectLoop 闭环检测
+
+`bool LoopClosing::DetectLoop()`
+
+取队列中第一个 KF，进行闭环检测。
+
+回环检测可以提高轨迹和建图精度，而错误的回环会导致地图彻底变形。回环检测需要保证准确率高，为此可以牺牲召回率。ORB 中的回环检测，要求连续几帧 (3 帧) 新增 KF 都与地图的某个区域具有相对较高相似性。
+
+“相对较高相似性”是相对于某 KF 的共视 KF 确定的，从某 KF 共视 KF 中计算最小参考词袋相似性得分，作为关键帧数据库筛选候选 KF 的阈值。
+
+需要注意，关键帧数据库在地图的一个局部区域只会提出一个最相似的候选 KF。
+
+对于检测出的几个满足相似性得分回环候选 KF，会计算这些候选 KF 的共视组，并与上一个新增 KF 候选 KF 共视组进行一致性判断，并计算累积一致性。累积一致性高，说明在连续己帧新增 KF 都在地图中的某个区域检测出了回环候选 KF，满足时间一致性，大概率出现了回环。
+
+由上，每次回环检测都会将当前 KF 的候选 KF 共视组作为新的历史共视组集，如果某些候选 KF 共视组没有在历史共视组中检测出一致关系，则记录其累积一致性为 0，重新统计。
+
+```
+1 从队首中获取 KF
+2 如果距离上次回环检测不超过 10 KF，忽略
+3 从当前 KF 共视 KF 中计算最小参考词袋相似性得分
+4 依据最小词袋相似性得分得分筛选候选 KF  C `DetectLoopCandidates`
+5 如果没有候选 KF，清空历史共视组集，返回
+6 遍历回环候选 KF 集，进行共视组一致性检测  L
+  1 遍历历史共视组集  L
+    1 如果候选 KF 共视组与历史共视组存在一致性，记录之，并计算累积一致性
+7 更新历史共视组
+8 如果存在满足一致性阈值的候选 KF，检测出回环；否则当前不存在回环
+```
+
+#### 1.3.3.2 ComputeSim3 计算 Sim3
+
+1
 
 ### 1.3.4 Viewer 显示
 
