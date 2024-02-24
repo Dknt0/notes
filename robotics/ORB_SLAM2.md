@@ -1814,7 +1814,9 @@ LoopClosing 线程函数
 
 `bool LoopClosing::DetectLoop()`
 
-取队列中第一个 KF，进行闭环检测。
+取队列中第一个 KF，进行闭环检测。如果连续几帧新增 KF 在地图某个区域检测出高相似度，给出闭环候选 KF。闭环候选 KF 可能同时检测出多个，在 ComputeSim3 会进行进一步筛选与匹配。
+
+此函数中所有检测都在词袋描述向量层面进行，不涉及特征点。
 
 回环检测可以提高轨迹和建图精度，而错误的回环会导致地图彻底变形。回环检测需要保证准确率高，为此可以牺牲召回率。ORB 中的回环检测，要求连续几帧 (3 帧) 新增 KF 都与地图的某个区域具有相对较高相似性。
 
@@ -1841,7 +1843,78 @@ LoopClosing 线程函数
 
 #### 1.3.3.2 ComputeSim3 计算 Sim3
 
-1
+`bool LoopClosing::ComputeSim3()`
+
+寻找当前 KF 与回环候选 KF 的匹配，给出一帧合理候选 KF 作为匹配 KF。给出当前 KF 相对于匹配 KF 的 Sim3 相对位姿，并寻找当前 KF 与局部 MP (匹配 KF 附近) 的匹配。
+
+与 Tracking 中的重定位相似。
+
+此函数的匹配是在特征点层面进行的。
+
+首先通过词袋匹配函数，寻找当前 KF MP 与候选 KF MP 的匹配，如果匹配数多于 20，则创建 Sim3Solver。已知 MP 间的匹配，两个关键帧的相对位姿求解是一个 ICP 问题，但由于单目相机尺度不确定，所以使用 Sim3 求解器。对每一个候选 KF 迭代执行 RANSAC，直到产生有效的结果。
+
+Sim3Solver 可以给出帧间相对位姿，并初步筛选匹配点对中的内点。以此为初值，调用 Sim3 互投影匹配以及 Sim3 优化，寻找当前 KF 与匹配 KF 间更多的匹配关系，计算更精确的帧间位姿。
+
+优化结束后，调用投影匹配，匹配当前 KF 与回环局部地图中的 MP，即匹配 KF 及其共视 KF 观测到的 MP。
+
+注意，函数执行到此位置，所有匹配关系记录在 LoopClosing 成员变量中，当前 KF 的观测还没有发生改变。
+
+```
+1 词袋匹配当前 KF 与候选 KF，为匹配数量多于 20 的候选 KF 创建 Sim3 求解器  C `SearchByBoW`
+2 循环执行 Sim3Solver RANSAC 迭代  L
+  1 如果求解器返回求解结果，进行 Sim3 互投影匹配  C `SearchBySim3`
+  2 进行 Sim3 优化  C `OptimizeSim3`
+  3 如果优化内点数多于 20，成功
+3 如果没有满足内点要求的匹配 KF，计算失败
+4 匹配当前 KF 与回环匹配 KF 局部范围内的地图点  C `SearchByProjection`
+5 如果局部地图匹配数多于 40，接收回环
+```
+
+#### 1.3.3.3 CorrectLoop 闭环校正
+
+`void LoopClosing::CorrectLoop()`
+
+依据 ComputeSim3 给出的当前 KF 和匹配 KF 相对位姿以及匹配关系，进行本质图优化回环矫正，并开启全局 BA 线程。
+
+ComputeSim3 完成了当前 KF 和匹配 KF 局部范围 MP 的匹配，为了保证 BA 正确运行，还需要添加当前 KF 局部范围内 KF 和匹配 KF 局部范围内 MP 的匹配。为此，首先利用 ComputeSim3 计算的变换关系，修正当前 KF 共视 KF 位姿，再使用投影匹配寻找这些 KF 和匹配 KF 局部范围内 MP 的关系，两个局部地图中的 MP 存在冗余，为此需要融合 MP。
+
+确定观测关系后，运行本质图优化，之后开启全局 BA 线程，进一步优化结果。相比全局 BA 本质图优化速度快很多。
+
+进行闭环修正时，需要暂停 LocalMapping 新增 KF 处理。
+
+```
+1 向 LocalMapping 发送信号，暂停插入新 KF
+2 如果当前有全局 BA 执行，中断之
+3 等待 LocalMapping 完全停止
+4 遍历当前 KF 局部范围内 KF，计算并记录其修正前后的位姿
+5 遍历当前 KF 局部范围内 KF，修正当前 KF 局部范围内 MP 空间坐标，使其对齐到回环的另一边
+6 添加当前 KF 对匹配 KF MP 的观测
+7 搜索并融合  C `SearchAndFuse`
+  1 遍历局部 KF  L
+    1 依据修正后的位姿匹配局部 KF 与回环局部 MP  C `Fuse`
+    2 替换局部 KF 观测到的旧 MP
+8 遍历局部 KF，计算回环连接，即当前 KF 附近 KF 与匹配 KF 附近 KF 中的哪些构成共视关系
+9 本质图优化  C `OptimizeEssentialGraph`
+10 添加本质图回环边  C `AddLoopEdge`
+11 开启全局 BA 线程  C `RunGlobalBundleAdjustment`
+```
+
+#### 1.3.3.4 RunGlobalBundleAdjustment 运行全局 BA
+
+`void LoopClosing::RunGlobalBundleAdjustment(unsigned long nLoopKF)`
+
+线程函数，在本质优化后调用，进一步优化 KF 位姿和 MP 位置。
+
+全局 BA 的结果会暂存在 KeyFrame::mTcwGBA 和 MapPoing::mPosGBA 中，需要在  优化后更新 KF 和 MP 中的位姿成员变量。
+
+全局 BA 运行需要消耗大量时间，在这期间 LocalMapping 中可能插入了新 KF，这些新增 KF 位姿的修正依赖生成树完成，从全局 BA 包括的最末端生成树 KF 开始，依据帧间变换修正新增 KF。
+
+由于全局 BA 耗时较长，一次 GBA 执行过程中可能会检测出新的回环，这时，旧的 GBA 会被打断。
+
+```
+1 运行全局 BA  C `GlobalBundleAdjustemnt`
+2 更新全部的新、旧 MP 和 KF
+```
 
 ### 1.3.4 Viewer 显示
 
