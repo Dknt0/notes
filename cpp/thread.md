@@ -5,6 +5,8 @@
 > [菜鸟教程C++多线程](https://www.runoob.com/cplusplus/cpp-multithreading.html)
 > 
 > [Introduction · C++并发编程](http://shouce.jb51.net/cpp_concurrency_in_action/)
+> 
+> https://blog.yanjingang.com/?p=6547
 
 # 1 Linux pthread 库
 
@@ -84,7 +86,7 @@ pthread_detach(threadid)
 
 # 2 C++ 11 多线程
 
-## 2.1 thread 多线程
+## 2.1 thread 线程类
 
 thread 是 C++ 11 中引入的一个与平台无关的线程库。
 
@@ -173,6 +175,14 @@ wait_for(...);
 
 独占锁用于管理线程锁`std::mutex`对象，在创建`std::unique_lock`时为其传入一个`std::mutex`对象，独占锁会阻塞等待锁被解开，并上锁执行后面的程序，当独占锁生命周期间结束时，会自动释放线程锁。
 
+特点：
+
+- 创建时可以不加锁（指定第二参数为std::defer_lock），而在需要时再锁定
+- 可以随时加锁解锁（代价是增加了锁状态的维护，空间和性能会略有影响）
+- 作用域规则同lock_grard，析构时自动释放锁
+- 不可复制，可移动（可通过move转到另一个scope中生存，增加了管理难度）
+- condition variable条件变量需要该类型的锁作为参数（此场景必须使用unique_lock）
+
 示例如下：
 
 ```cpp
@@ -182,4 +192,38 @@ std::mutex myMutex;
     // do sth
 }
 // lck 生命周期结束，myMutex 被释放
+```
+
+## 2.4 lock_guard 守卫锁
+
+lock_guard 相比 unique_lock 不那么灵活，不能在使用中释放再上锁
+
+特点：
+
+- 创建即加锁，作用域结束自动析构并解锁，无需手工解锁
+- 不能中途解锁，必须等作用域结束才解锁
+- 不能复制
+
+## 2.5 condition_variable 条件变量
+
+用于阻塞某个或某些线程，在其他线程中唤醒被阻塞线程。
+
+例程如下。thread_1 执行时申请全局锁 global_lock，但这时数据没有准备好，于是调用条件变量 condVar 进入阻塞状态，这时 global_lock 会被释放。当 thread_2 中准备好数据时，会通过 condVar 通知 thread_1，唤醒其运行。
+
+```cpp
+#include <condition_variable>
+bool ready_flag = false;
+std::mutex global_lock;
+condition_variable condVar;
+void thread_1() {
+    std::unique_lock<std::mutex> lock_1(global_lock);
+    if (!ready_flag) condVar.wait(lock_1);
+    // ...
+}
+void thread_2() {
+    std::unique_lock<std::mutex> lock_2(global_lock);
+    ready_flag = true;
+    unique_lock.unlock();
+    condVar.notify_all();
+}
 ```

@@ -8,6 +8,19 @@
 
 1
 
+```cpp
+rs2::context;
+rs2::device_list;
+rs2::device;
+rs2::pipeline;  // 管道
+rs2::frameset;
+rs2::profile;
+rs2::stream;
+rs2::stream_profile;
+rs2::align;
+rs2_intrinsics;
+```
+
 # 获取图像
 
 1
