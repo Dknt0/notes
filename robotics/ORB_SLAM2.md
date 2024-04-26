@@ -968,9 +968,9 @@ g2o::EdgeStereoSE3ProjectXYZOnlyPose;
 
 ORB 中的本质图优化类似于位姿图优化，但只考虑共视数多于 100 的边。本质图优化只会在检测到回环时调用，图中的边包括本次检测出的回环边，以及生成树和本质图中的边，本质图中的边又包括历史检测出的回环边，以及共视数大于阈值的边。
 
-优化结束后，还需要同步更新地图点位置。
+本质图中到考虑两类边：本次回环边和本质图边，其中本质突图边包括生成树、共视图和历史回环边。LoopClosing 中检测出当前 KF 和与之相对的匹配 KF，并在匹配二者共视范围的 KF，形成本次回环边 LoopConnections。本次回环边的约束位姿通过修正当前 KF 共视 KF 修正后的位姿 CorrectedSim3 计算，而这些 KF 在本质图边中与其他 KF 构成的边需要通过修正前位姿 NonCorrectedSim3 计算。
 
-**存疑**  这里给出的修正 Sim3 和未修正 Sim3 的作用不是很理解。在向图中添加 KF 顶点时候，会查询 `CorrectedSim3`，如果有 KF 信息则使用之。在向图添加观测边时，会查询 `NonCorrectedSim3`，如果有则使用之计算帧间变换。
+优化结束后，还需要同步更新地图点位置。
 
 求解器配置：
 
@@ -1749,7 +1749,6 @@ LocalMapping 检测新 KF 与数据库中 KF 的闭环关系，并完成位姿�
 
 LoopClosing 优先完成当前 KF 的闭环检测，与 LocalMapping 不同，新增 KF 可以等待。
 
-
 KFDatabase 中是否存在已经被剔除的 KF
 
 1
@@ -1771,15 +1770,15 @@ typedef map<KeyFrame*, g2o::Sim3, std::less<KeyFrame*>,
 /* 待检测 KF 相关 */
 std::list<KeyFrame*> mlpLoopKeyFrameQueue;  // 回环 KF 队列
 KeyFrame* mpCurrentKF;  // 当前 KF
-KeyFrame* mpMatchedKF;  // 回环匹配 KF?
+KeyFrame* mpMatchedKF;  // 匹配 KF
 /* 共视组相关 */
 float mnCovisibilityConsistencyTh;  // 共视一致性阈值  =3
 std::vector<ConsistentGroup> mvConsistentGroups;  // 历史共视组集  仅在回环检测中使用  vector<pair<共视 KF 集合, 与其他组的共视数量>>  数据存储策略？
 std::vector<KeyFrame*> mvpEnoughConsistentCandidates;  // 满足一致性阈值的候选 KF 集
 /* 当前 KF 回环相关 */
-std::vector<KeyFrame*> mvpCurrentConnectedKFs;  // 当前 KF 近邻 KF 集?
-std::vector<MapPoint*> mvpCurrentMatchedPoints;  // 当前 KF MP 匹配集?
-std::vector<MapPoint*> mvpLoopMapPoints;  // 闭环 MP 集?
+std::vector<KeyFrame*> mvpCurrentConnectedKFs;  // 当前 KF 局部范围内 KF  包括当前 KF 及其近邻 KF
+std::vector<MapPoint*> mvpCurrentMatchedPoints;  // 当前 KF 对回环匹配 KF MP 匹配
+std::vector<MapPoint*> mvpLoopMapPoints;  // 回环局部 MP  匹配 KF 局部范围内 MP
 cv::Mat mScw;  // Scw
 g2o::Sim3 mg2oScw;  // 优化后 Scw
 ```
