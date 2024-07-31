@@ -28,6 +28,13 @@ catkin_make
 > 编译后生成 devel/setup.bash 初始化文件，修改 ~/.bashrc 使其默认执行：
 > `source {PATH_TO_WS}/devel/setup.bash`
 
+单独编译包。
+
+```shell
+catkin_make -DCATKIN_WHITELIST_PACKAGES=package_name
+# or
+```
+
 2. 创建功能包 
 
 ```shell
@@ -529,6 +536,8 @@ resrun pkg node /cmd_vel:=/turtle1/cmd_vel
 
 ## 3.2 launch 文件
 
+### 3.2.1 launch 文件模板
+
 ```xml
 <launch>
     <!-- 启动节点 pkg 包名, type 节点类型, name 节点命名, output 日志 -->
@@ -560,6 +569,29 @@ resrun pkg node /cmd_vel:=/turtle1/cmd_vel
     <param name="param" value="$(arg xxx)" />
 </launch>
 ```
+
+### 3.2.1 launch 配置 gdb 调试
+
+新建 xterm 窗口运行 gdb。需要下载 xterm。
+
+```xml
+    <node pkg="my_pkg" type="hello" name="hello1" output="screen" launch-prefix="xterm -e gdb --args" />
+```
+
+在 tmux 中运行 gdb 调试。需要先创建运行脚本，并赋予运行权限，脚本内容如下：
+
+```bash
+#!/bin/sh
+
+tmux new-window "gdb --args $*"
+```
+
+launch 中节点内容如下：
+
+```xml
+    <node pkg="my_pkg" type="hello" name="hello1" output="screen" launch-prefix="/path/to/run_tmux" />
+```
+
 
 # 4 命令行
 

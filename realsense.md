@@ -33,6 +33,22 @@ rs2_intrinsics;
 
 1
 
+# 固件配置
+
+
+
+
+
 # 标定与调参
 
-1
+
+## 参数查看
+
+使用命令 `rs-sensor-control` 在命令行中查看与设置相机参数
+
+## 使用 kalibr 标定相机参数
+
+> 参考: https://blog.csdn.net/weixin_41954990/article/details/127928852
+
+
+
