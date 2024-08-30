@@ -1,119 +1,116 @@
 # VINS-Fusion
 
-> 香港科技大学航空机器人组开源 VISLAM 框架 VINS-Fusion 记录
+> HKUST Aerial Robotics group's open source VIO framework
 > 
-> 参考
+> Reference:
 > 
 > [GitHub - HKUST-Aerial-Robotics/VINS-Fusion: An optimization-based multi-sensor state estimator](https://github.com/HKUST-Aerial-Robotics/VINS-Fusion)
 > 
 > Dknt 2023.11
 
-相机外参估计，IMU 零偏估计。
+Camera extrinsic parameters estimation. IMU bias estimation.
 
-光流特征？
+Using optical flow and Shi-Tomasi corners.
 
-移动初始化，失效恢复。
+Moving initialization, recovery when failed.
 
-IMU 预积分。
+IMU pre-integration.
 
-基于滑动窗口的紧耦合优化。
+Tightly coupled optimization based on sliding window.
 
-回环检测。
+Loop closing.
 
-四自由度位姿图优化，认为 IMU 给出了准确的俯仰角和滚转角估计。
+4-DoF pose graph optimization (x, y, z, yaw) considering that IMU provides accurate roll and pitch angles.
 
-？关键帧选择？
+VINS-Fusion can be divided into 3 processes:
 
-1
+* `vins_estimator` VIO
 
-VINS-Fusion 为三线程结构，三线程分别如下：
+* `loop_fusion` Loop closing
 
-* `vins_estimator` 惯性视觉里程计
+* `global_fusion` global position sensor (e.g. GNSS) fusion
 
-* `loop_fusion` 回环检测
+The `vins_estimator` is the basic VIO process using sliding window method to evaluate current camera pose, which is crucial for us. Loop closing and global fusion are optional.
 
-* `global_fusion` 全局传感器（GNSS）融合
+**VINS can calibrate camera extrinsic parameters at run time.**
 
-其中，vins_estimator 为最基本的视觉里程计线程，使用滑动窗口法求解当前帧位姿，也是代码量最大的部分。回环与全局部分可以选择性运行。
+VINS-Fusion relies on ROS, it can not run without ROS1.
 
-**VINS 可以在运行时校正相机内参。**
+> On the KITTI official leaderboard (as of November 27, 2023), the accuracy of VINS-Fusion surpasses that of ORB-SLAM2. This suggests that the mid-term data fusion in ORB-SLAM may not have played a significant role. The key to odometry accuracy lies in the sliding window, while the key to global trajectory accuracy lies in loop closure detection. Moreover, global BA (Bundle Adjustment) does not significantly improve accuracy compared to pose graph optimization, yet it consumes a substantial amount of computational power.
 
-VINS-Fusion 完全依赖 ROS，脱离 ROS 无法运行，导致向 ROS 2 的移植会比较困难。
+# 0 Framework and coding style
 
-在 VINS 的基础上可以做视觉外力估计，这是个方向。
+Global variables are widely used in the source code of VINS, instead of class public members, and there is no locks for them. It is better to preserve them in a single class.
 
-> 很有趣，在 KITTI 官网排行榜上，VINS-Fusion 的精度是超过 ORB-SLAM2 的（2023.11.27），这说明 ORB-SLAM2 中的中期数据融合似乎没有起到太大作用，里程计精度的关键在于滑动窗口，全局轨迹精度的关键在于回环检测。并且，全局 BA 相比位姿图优化对精度并没有太大的提升，却消耗了大量的算力。
-> 
-> 因此，我们的系统初步拟定以滑动窗口为主，回环检测也是必要的。为了降低跟踪失效的概率，需要融合 IMU 信息。优化器选择前途光明的 Ceres。系统不依赖于 ROS，但提供对 ROS 的接口。
+# 1 Visual Odometry `vins_estimator`
 
-# 0 代码框架与编程风格
+There are 3 .cpp file under `vins_estimator/src`, among them 1 ROS interface node and 2 test nodes on KITTI dataset.
 
-VINS 源码中大量使用了全局变量，例如 parameters.cpp, visualization.cpp 中，包含大量全局变量，并且没有对变量的保护锁。这些全局变量最好按功能封装成类。
+The other folds correspond to the following modules:
 
-# 1 视觉里程计 vins_estimator
+* `estimator` Estimator class, Feature management, Parameter loading (global)
 
-功能包 src 下有三个 cpp 文件，分别为一个 ROS 接口节点、两个数据集测试节点。
+* `factor` Residual, manifold classes in Ceres.
 
-其余文件夹对应如下模块：
+* `featureTracker` Feature tracking and optical flow.
 
-* `estimator` 观测器类 (estimator)、特征管理、参数加载 (全局变量)
+* `initial` Initialization tool.
 
-* `factor` 实现各种因素对应的 Ceres 残差类、流形类
+* `utility` ROS publishers, math tools.
 
-* `featureTracker` 特征提取（光流）
+1 TODO
 
-* `initial` 初始化工具
+Keyframe Selection policies:
+1. 
+2. 
 
-* `utility` ROS 发布者、数学工具。
+## 1.1 Odometry?
 
-1
+`vins_estimator/src/rosNodeTest.cpp`。
 
-## 1.1 里程计入口
+Read config file path from command line, initialize `Estimator` and Publishers.
 
-见 `vins_estimator/src/rosNodeTest.cpp`。
+The system class `Estimator` is driven by data. There are 3 types of data: image, IMU, features, which are passed to estimator through `inputImage`, `inputIMU` and `inputFeature。`.
 
-入口中读取配置文件，初始化观测器、发布者。
+`Estimator` provides interfaces to reset system and change running mode.
 
-系统为数据驱动，三类数据：图像、IMU、特征。分别调用 inputImage, inputIMU, inputFeature。特征不知道是哪里来的。
+## 1.2 Estimator Class?
 
-提供了重置系统、切换运行模式的接口。
+`Estimator` is similar to `Tracking` in ORB-SLAM.
 
-## 1.2 Estimator 类
-
-观测器类，类似于 ORB 中的 Tracking。
-
-Estimator 可以将 processMeasurements 函数运行为一个单独的线程，用于处理数据，也可以设置为数据驱动模式，当数据到来时，在相应的处理函数中调用 processMeasurements。
-
-> 为什么要搞这个多线程......
+`Estimator` can set `processMeasurements` as a single thread or as data-driven.
 
 1
 
-特征类型为`pair<double, map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>>`，
+The feature in vins has the type of `pair<double, map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>>`.
 
-inputFeature 可能不会被调用。意义何在？imputImage 中会提取图像特征，并将特征放入缓存队列，为什么要额外接收特征？
-
-1
-
-注意各种 CostFunction 中信息矩阵的设置
+inputFeature may not be called.
 
 1
 
-> 边缘化对于关键帧剔除的意义？
+In `CostFunction` information matrixes are set.
 
 1
 
-## 1.3 FeatureTracker 类
-
-VINS 使用 Shi-Tomasi 特征，是基于光流法的 VSLAM。据说上限低，不如 ORB，且回环检测可能存在问题。可能速度快吧。
-
-检测的主要函数是 trackImage，输入图像，返回一组特征状态，光流相关的，这个不太懂。
-
-返回的特征是这个类型的：`map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>`
+> Marginalization?
 
 1
 
-# 2 回环检测 loop_fusion
+## 1.3 FeatureTracker Class
+
+VINS is based on optical flow using Shi-Tomasi features,
+
+Features in VINS have the type of`map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>`
 
 1
 
-# 3 全局传感器融合 global_fusion
+# 2 Loop Closing `loop_fusion`
+
+1
+
+# 3 Global Sensor Fusion `global_fusion`
+
+
+
+
+
