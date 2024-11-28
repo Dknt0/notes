@@ -12,8 +12,6 @@ ROS 2 Humble 是 ROS 2 的第一个 LTS 发行版，运行在 Ubnutu 22.04 系�
 
 ROS 2 Humble 也可以通过源码编译运行在其他系统上。
 
-> 先大概记录下内容，再分章节总结笔记
-
 # 1 命令行
 
 * 运行
@@ -162,41 +160,15 @@ ros2 run <pkg_name> <node_name> --ros-args --log-level WARN
 ros2 pkg create <package_name> --build-type ament_cmake [--dependencies rclcpp ...]
 ```
 
-# 启动
-
-ROS 2 的启动文件有三种，XML、Python、YAML。Python 最为方便。
-
-Python 启动文件位于 package/launch 目录下
-
-1
-
-示例：
-
-```python
-
-```
-
-修改 CMakeLists.txt 文件
-
-```cmake
-
-```
-
-启动命令：
-
-```shell
-
-```
-
 # 依赖管理
 
 rosdep
 
 1
 
-# _1 开发
+# 1 开发
 
-ROS 2 编程与 ROS 1 有很大区别（C++）。用到了一些高级语法特性。
+ROS 2 编程与 ROS 1 有很大区别（C++）。
 
 ROS 2 的一个进程中可以运行多个节点。在 C++ 中，节点被抽象成一个类，我们可以继承`rclcpp::Node`类，来建立自己的节点，实现自己的功能。
 
@@ -206,9 +178,9 @@ ROS 2 的一个进程中可以运行多个节点。在 C++ 中，节点被抽象
 
 ROS 2 C++ 编程中大量使用了共享指针`std::shared_ptr<T>`。
 
-在 ROS 2 源码中提供了多种通信的编程实现方式，可以根据实际情况选用最合适的。
+在 ROS 2 源码中提供了多种通信的编程实现方式，包括类方法、Lambda 表达式等，可以根据实际情况选用最合适的。
 
-## _1.1 colcon 工具
+## 1.1 colcon 工具
 
 `colcon`是 `catkin`, `ament` 等 ROS 编译工具的集成。
 
@@ -252,7 +224,7 @@ echo "export _colcon_cd_root=/opt/ros/humble/" >> ~/.bashrc
 echo "source /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash" >> ~/.bashrc
 ```
 
-## _1.2 工作空间与 ROS 包
+## 1.2 工作空间与 ROS 包
 
 如果在包目录下有一个叫`COLCON_IGNORE`的空文件，那么这个包不会被 colcon 编译。
 
@@ -264,7 +236,7 @@ rosdep install -i --from-path src --rosdistro humble -y
 
 ROS 2 包分为两类：CMake 和 Python。ROS 2 包使用 ament 作为编译系统，使用 colcon 作为编译工具。
 
-### _1.2.1 CMake 包
+### 1.2.1 CMake 包
 
 用于管理 C++ 项目。
 
@@ -299,7 +271,7 @@ ros2 pkg create --build-type ament_cmake <package_name> --dependencies rclcpp st
 
 1
 
-### _1.2.2 Python 包
+### 1.2.2 Python 包
 
 用于管理 Python 项目
 
@@ -307,11 +279,11 @@ ros2 pkg create --build-type ament_cmake <package_name> --dependencies rclcpp st
 ros2 pkg create --build-type ament-python <package_name>
 ```
 
-## _1.3 话题 Topic
+## 1.3 话题 Topic
 
 ROS 2 C++ 中的节点为`rclcpp::Node`的派生类，这种方式可以让一个进程中运行多个节点（由此，进程与节点不再等价）。ROS 2 也支持与 ROS 1 类似的编程方式，这时一个进程之能运行一个节点。推荐使用新方法。
 
-### _1.3.1 自定义话题
+### 1.3.1 自定义话题
 
 话题定义文件存放在 ROS 包 msg 目录下。话题可以导入其他 underlay 中已经定义的话题。
 
@@ -353,7 +325,7 @@ target_link_libraries(target_name "${cpp_typesupport_target}")
 
 自定义话题可以使用 underlay 中定义过的话题，也可以使用这些话题的数组。为此，必须在 package.xml 中添加依赖，在 CMakeLists.txt 生成话题库时添加依赖，编写代码时加入 underlay 的头文件。详见 https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Single-Package-Define-And-Use-Interface.html
 
-### _1.3.2 C++ Publisher
+### 1.3.2 C++ Publisher
 
 源码 publisher_member_function.cpp
 
@@ -425,7 +397,7 @@ install(TARGETS
 
 > 注意：存在其他编程方式用 C++ 实现话题通信，详见源码
 
-### _1.3.3 C++ Subscriber
+### 1.3.3 C++ Subscriber
 
 源码 subscriber_member_function.cpp
 
@@ -487,7 +459,7 @@ install(TARGETS
 )
 ```
 
-### _1.3.4 Python P & S
+### 1.3.4 Python P & S
 
 Python 中模块导入的问题。
 
@@ -499,11 +471,11 @@ sys.path.append("/home/dknt/Projects/uav_sim/src/yolo_detector/yolo_detector")
 import detect
 ```
 
-## _1.4 服务 Service
+## 1.4 服务 Service
 
 1
 
-### _1.4.1 自定义服务
+### 1.4.1 自定义服务
 
 服务定义文件存放在 ROS 包 srv 目录下
 
@@ -544,7 +516,7 @@ rosidl_get_typesupport_target(cpp_typesupport_target
 target_link_libraries(target_name "${cpp_typesupport_target}")
 ```
 
-### _1.4.2 C++ Server
+### 1.4.2 C++ Server
 
 源码 add_two_ints_server.cpp
 
@@ -603,7 +575,7 @@ install(TARGETS
 )
 ```
 
-### _1.4.3 C++ Client
+### 1.4.3 C++ Client
 
 源码 add_two_ints_server.cpp
 
@@ -680,17 +652,17 @@ install(TARGETS
 )
 ```
 
-### _1.4.4 Python S & C
+### 1.4.4 Python S & C
 
 1
 
-## _1.5 参数 Parameter
+## 1.5 参数 Parameter
 
 ROS 2 中参数属于节点，不存在参数服务器。
 
 节点可以在程序中设置，也可以在启动文件中设置。
 
-### _1.5.1 C++ 参数配置
+### 1.5.1 C++ 参数配置
 
 ROS 2 首先要在节点代码中声明参数，之后才可以设置它。
 
@@ -743,19 +715,19 @@ ParamNode() : Node("param_test"), count_(0) {
 }
 ```
 
-### _1.5.2 Python 参数配置
+### 1.5.2 Python 参数配置
 
 1
 
-### _1.5.2 启动文件参数配置
+### 1.5.2 启动文件参数配置
 
 1
 
-## _1.6 动作 Action
+## 1.6 动作 Action
 
 1
 
-## _1.7 插件 Plugin
+## 1.7 插件 Plugin
 
 插件是一种 C++ 动态链接库，使用插件时，用户不需要预先知道库中的类和库的头文件。插件有助于应用程序的扩充、模块化，同时不需要提供源码。
 
@@ -767,21 +739,47 @@ ParamNode() : Node("param_test"), count_(0) {
 > 
 > 这个是高级主题，暂时不会用到。
 
-# _2 常用功能包
+## 1.8 启动 Launch
 
-## _2.1 std_msgs
+ROS 2 的启动文件有三种，XML、Python、YAML。Python 最为方便。
 
-1
-
-## _2.2 geometry_msgs
+Python 启动文件位于 package/launch 目录下
 
 1
 
-## _2.3 senser_msgs
+示例：
+
+```python
+
+```
+
+修改 CMakeLists.txt 文件
+
+```cmake
+
+```
+
+启动命令：
+
+```shell
+
+```
+
+# 2 常用功能包
+
+## 2.1 std_msgs
 
 1
 
-## _2.4 tf2
+## 2.2 geometry_msgs
+
+1
+
+## 2.3 senser_msgs
+
+1
+
+## 2.4 tf2
 
 tf2 是 ros2 中的坐标变换包
 

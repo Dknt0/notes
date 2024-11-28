@@ -10,7 +10,7 @@ DDS (Data Distribution Service) 是 2004 年由对象管理组织 OMG 发布的�
 
 在 OSI 七层模型中的位置如下图。
 
-<img title="" src="file:///home/dknt/Documents/notes/robotics/image/Screenshot%20from%202023-06-26%2020-47-08.png" alt="" data-align="center" width="389">
+<img title="" src="image/Screenshot%20from%202023-06-26%2020-47-08.png" alt="" data-align="center" width="389">
 
 实时 Real-time 的定义：在单位时间内的跳动很小。很稳定，但未必要快。
 
