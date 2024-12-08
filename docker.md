@@ -1,0 +1,211 @@
+Docker Note
+===
+
+> To deploy applications developed in different environments.
+
+# 0 Installation
+
+> Reference:
+> https://docs.docker.com/engine/install/ubuntu/
+
+Install Docker Engine. Docker Desktop may not support X11 forwarding.
+
+## 0.1 Docker Engine
+
+Docker Engine is a CLI version of Docker containing all tools we need. Install Docker Engine.
+
+```shell
+# Remove old versions
+for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do sudo apt-get remove $pkg; done
+```
+
+## 0.2 Docker Desktop
+
+> Docker Desktop may can not use X11 forwarding!
+
+> Reference:
+> https://docs.docker.com/desktop/install/linux/
+
+Check and set KVM virtualization support. If the docker can not be run without sudo, one should check this.
+
+Load `kvm` module if it is not loaded automatically.
+
+```shell
+modprobe kvm
+modprobe kvm_intel
+```
+
+Then check it.
+
+```shell
+kvm-ok
+lsmod | grep kvm
+```
+
+Check and set KVM device user permissions.
+
+```shell
+# Check ownership
+ls -al /dev/kvm
+# Set user to the kvm group
+sudo usermod -aG kvm $USER
+```
+
+Set up Docker's repository.
+
+```shell
+# Add Docker's official GPG key:
+sudo apt-get update
+sudo apt-get install ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+# Add the repository to Apt sources:
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+```
+
+Download the Docker deb package [here](https://desktop.docker.com/linux/main/amd64/docker-desktop-amd64.deb?utm_source=docker&utm_medium=webreferral&utm_campaign=docs-driven-download-linux-amd64&_gl=1*1h0pdfz*_gcl_au*MjEyMzY3NjQ4LjE3MzAzNDA2MTY.*_ga*MjIzMDI4OTAxLjE3MzAzNDA2MTY.*_ga_XJWPQMJYHQ*MTczMDM0MDYxNS4xLjEuMTczMDM0MTc3OC4xMy4wLjA.), then install it.
+
+```shell
+sudo apt-get update
+sudo apt-get install ./docker-desktop-amd64.deb
+```
+
+To sign in to Docker, `pass` should be initialized before.
+
+```shell
+gpg --generate-key
+```
+
+My key is saved in `/home/dknt/.gnupg/openpgp-revocs.d`.
+
+Then one can use the `id_public_key` to initialize `pass`:
+
+```shell
+pass init <your_generated_gpg-id_public_key>
+```
+
+# 1 Docker Basis
+
+Docker provides the ability to package and run an application in a loosely isolated environment called a **container**. Containers are lightweight and contain everything needed to run the application.
+
+Docker architecture is illustrated in the image below. It has a client-server architecture. The Docker client and daemon can run on the same system or separate.
+
+<div class="center-image">
+  <img src="image/docker-architecture.webp" width="800px" />
+</div>
+
+When we use Docker commands like `docker run`, the client sends the commands to the daemon `dockerd`.
+
+Docker Desktop includes Docker daemon, Docker client, Docker Compose, etc.
+
+Docker registry stores Docker images. Docker Hub is a public registry.
+
+An **image** is a read-only template with instructions for creating a Docker container. Typically, one image is based on another image. To build an image, a Dockerfile should be created. Each instruction in a Dockerfile creates a layer in the image.
+
+A **container** is a runnable instance of an image. User can control how isolated a container's network, storage, or other underlying subsystems are from other containers or from the host machine.
+
+For instance, use the following command to run an `ubuntu` container, attach interactively (-i interactively) to the local command-line session (-t terminal), and run /bin/bash. (Make sure the daemon is running before run the command.)
+
+```shell
+docker run -i -t ubuntu /bin/bash
+```
+
+Commonly used commands:
+
+```shell
+# Pull a image from registry
+docker pull image_name
+# Create a new container
+docker container create
+```
+
+# 2 Usage
+
+## 2.1 ROS Noetic environment
+
+```bash
+docker pull ubuntu:20.04
+docker run -it --name ros_noetic ubuntu:20.04 /bin/bash
+```
+
+Then install ROS Noetic following the official site.
+
+To run the docker container with X11 forwarding, we need to allow access to the X server.
+
+```shell
+xhost +local:docker
+```
+
+Then use a shell with X11 forwarding:
+
+```shell
+docker run -it -p 2222:22 --env DISPLAY=:0 --privileged --volume="$HOME/.Xauthority:/root/.Xauthority:rw" -v /tmp/.X11-unix:/tmp/.X11-unix image_name
+```
+
+> Using `-p 2222:22` to export a port. Attention, the port mappings are specified at the time the container is created, and they cannot be modified afterwards.
+
+> Ths `DISPLAY` may be set to `:0`, `:1` or `:0.0`
+
+One can use nvidia graphics in a docker container. To do this, the [NVIDIA container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) should be installed.
+
+Then, the image should be created with:
+
+```shell
+docker run --runtime=nvidia --gpus all -it -p 2222:22 --env DISPLAY=:0 --privileged --volume="$HOME/.Xauthority:/root/.Xauthority:rw" -v /tmp/.X11-unix:/tmp/.X11-unix image_name
+```
+
+One can then save the environment in an image.
+
+```bash
+# Save container to image
+docker commit ros_noetic_container my_ros_noetic_image
+# Save the image as a file
+docker save -o image_name.tar image_name
+# Load an image
+docker load -i image_name.tar
+```
+
+To create a user with sudo permission:
+
+```bash
+sudo usermod -aG sudo user_name
+```
+
+The ssh may not be started by default, we should start the service manually.
+
+```bash
+sudo service ssh start
+```
+
+## 2.2 Nvidia Container Toolkit
+
+It is recommended to use the NVIDIA Container Toolkit to access the GPU on the host machine.
+
+> TODO
+
+## _ Start a docker project
+
+```shell
+docker compose watch
+```
+
+<!-- CSS class -->
+<style>
+  .center-image {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .center-image img {
+    max-width: 100%;
+    max-height: 100%;
+    background-color: #FFFFFFAA;
+    padding: 10px;
+  }
+</style>

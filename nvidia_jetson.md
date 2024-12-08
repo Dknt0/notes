@@ -1,7 +1,7 @@
 Nvidia Jetson Note
 ===
 
-> I'v gotten a Nvidia Jetson AGX Orin developer kit with its password forgotten by bro Long, and try to deploy a dual-manipulator big model.
+> I'v gotten a Nvidia Jetson AGX Orin developer kit with its password forgotten, and try to deploy a dual-manipulator big model.
 >
 > Reference:
 > 1. [Ubuntu for Jetson AGX manual](https://pages.ubuntu.com/rs/066-EOV-335/images/Ubuntu_22.04_for_NVIDIA_Jetson_Orin_Instructions.pdf?version=0&_gl=1*1ieoinb*_gcl_au*OTU3MjY1Mzk5LjE3MzAyODk1NDc.&_ga=2.180654244.205235902.1732520055-1792765167.1721727752)
@@ -96,7 +96,7 @@ Then comes another. You may find that your `torch.cuda.is_available()` failed af
 
 TODO
 
-# Setup System in Terminal (Omit this)
+# Setup System in Terminal (Ignore this)
 
 > Tried, succeeded with a lot of things to be done, such as dividing partition manually, installing and setting-up desktop environment and software... Then I give up and adopt Jetson SDKManager, which provides a much more friendly GUI to settle these stuffs.
 > These notes are added here for reference.
