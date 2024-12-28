@@ -8,6 +8,14 @@ Fast DDS Note
 > Reference:
 > [eProsima Fast DDS Documentation](https://fast-dds.docs.eprosima.com/en/v3.1.0/)
 
+# 0 Installation
+
+You can install DDS binary package installed from official website. The binary package supports only C++.
+
+To use FastDDS in both C++ and Python, you should manually build the hold FastDDS from source code, including Foonathan, Fast CDR, Fast DDS, FastDDS Python, and Fast DDS Gen. Refer to [documentation](https://fast-dds.docs.eprosima.com/en/latest/installation/sources/sources_linux.html#colcon-installation). You should use `fastddsgen` and the library from the same build to prevent version mismatch error or some link error.
+
+On Nvidia Jetson, `findpackage(fastdds REQUIRED)` will fail. I'v solved this by using `set(fastdds "<path-to-fastdds>/fastdds.so")`.
+
 # 1 Basis
 
 ## 1.1 Network Basis

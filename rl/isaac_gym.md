@@ -24,7 +24,7 @@ Create a conda environment:
 
 ```shell
 conda create -n legged-gym python==3.8
-pip install torch==2.4.1 torchaudio==2.4.1 torchvision==0.19.1
+conda install pytorch torchvision torchaudio pytorch-cuda=12.4 -c pytorch -c nvidia
 ```
 
 Install `isaac_gym`:
@@ -156,7 +156,11 @@ TODO
 
 `get_asset_dof_properties`
 
+Contains joint position, velocity limits.
+
 `get_asset_rigid_shape_properties`
+
+Rigid shape property contains friction coefficient.
 
 `get_asset_dof_names`
 
@@ -182,7 +186,7 @@ asset_options.vhacd_params.max_num_vertices_per_ch = 64
 
 ### 1.2.4 Procedural Assets
 
-Simple geometric assets can be crated procedurally:
+Simple geometric assets can be created procedurally:
 
 ```py
 asset_options = gym.AssetOptions()
@@ -195,7 +199,7 @@ capsule_asset = gym.create_capsule(sim, radius, length, asset_options)
 
 ## 1.3 Environments and Actors
 
-An **environment** consists of a collection of **actors** and **sensors** that are simulated **together**. Actors within an environment interact with each other physically. A Isaac Gym simulation can contain multiple environments. Once we finish populating one environment and start populating the next one, we **can no longer** add actors to the previous environment.
+An **environment** consists of a collection of **actors** and **sensors** that are simulated **together**. Actors within an environment interact with each other physically. An Isaac Gym simulation can contain multiple environments. Once we finish populating one environment and start populating the next one, we **can no longer** add actors to the previous environment.
 
 We should create an environment by calling `create_env` first, before adding actors in it. Each environment has its own coordinate space. New environments are added as a 2D grid one row at a time.
 

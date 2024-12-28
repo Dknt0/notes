@@ -19,6 +19,40 @@ Docker Engine is a CLI version of Docker containing all tools we need. Install D
 for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do sudo apt-get remove $pkg; done
 ```
 
+Setup docker apt repository.
+
+```shell
+# Add Docker's official GPG key:
+sudo apt-get update
+sudo apt-get install ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+# Add the repository to Apt sources:
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+```
+
+Install docker engine.
+
+```shell
+sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
+Rootless mode.
+
+```shell
+sudo groupadd docker
+sudo usermod -aG docker $USER
+newgrp docker
+# Logout and check
+```
+
+
 ## 0.2 Docker Desktop
 
 > Docker Desktop may can not use X11 forwarding!
@@ -144,10 +178,10 @@ xhost +local:docker
 Then use a shell with X11 forwarding:
 
 ```shell
-docker run -it -p 2222:22 --env DISPLAY=:0 --privileged --volume="$HOME/.Xauthority:/root/.Xauthority:rw" -v /tmp/.X11-unix:/tmp/.X11-unix image_name
+docker run -it -p 22222:22 --env DISPLAY=:0 --privileged --volume="$HOME/.Xauthority:/root/.Xauthority:rw" -v /tmp/.X11-unix:/tmp/.X11-unix image_name
 ```
 
-> Using `-p 2222:22` to export a port. Attention, the port mappings are specified at the time the container is created, and they cannot be modified afterwards.
+> Using `-p 22222:22` to export a port. Attention, the port mappings are specified at the time the container is created, and they cannot be modified afterwards.
 
 > Ths `DISPLAY` may be set to `:0`, `:1` or `:0.0`
 
@@ -156,7 +190,7 @@ One can use nvidia graphics in a docker container. To do this, the [NVIDIA conta
 Then, the image should be created with:
 
 ```shell
-docker run --runtime=nvidia --gpus all -it -p 2222:22 --env DISPLAY=:0 --privileged --volume="$HOME/.Xauthority:/root/.Xauthority:rw" -v /tmp/.X11-unix:/tmp/.X11-unix image_name
+docker run --runtime=nvidia --gpus all -it -p 22222:22 --env DISPLAY=:0 --privileged --volume="$HOME/.Xauthority:/root/.Xauthority:rw" -v /tmp/.X11-unix:/tmp/.X11-unix image_name
 ```
 
 One can then save the environment in an image.
@@ -166,6 +200,10 @@ One can then save the environment in an image.
 docker commit ros_noetic_container my_ros_noetic_image
 # Save the image as a file
 docker save -o image_name.tar image_name
+# (Optional) Compress
+pigz image_name.tar
+# (Optional) Decompress
+pigz -d -c image_name.tar.gz
 # Load an image
 docker load -i image_name.tar
 ```
@@ -182,11 +220,113 @@ The ssh may not be started by default, we should start the service manually.
 sudo service ssh start
 ```
 
+Useful command:
+
+```bash
+# Check available docker images
+docker images
+# Connect to an existing docker container
+docker start <container_name_or_id>
+docker exec -it <container_name_or_id> /bin/bash
+```
+
+### 2.1.1 Nvidia Support
+
+Nvidia Support:
+
+
+Then run the container with GPU support:
+
+```bash
+docker run --gpus all -it --runtime=nvidia -p 22222:22 --env DISPLAY=:0 --privileged --volume="$HOME/.Xauthority:/root/.Xauthority:rw" -v /tmp/.X11-unix:/tmp/.X11-unix --network host nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu20.04 /bin/bash
+```
+
+Install ROS in a container.
+
+```shell
+apt update
+apt install -y curl git vim wget build-essential unzip zip tmux net-tools iputils-ping lsb-release gnome-mines htop
+
+# Setup environment variable
+echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
+
+# GL
+sudo apt install nvidia-prime
+sudo prime-select nvidia
+```
+
+There is a ROS Noetic container with everything we need, including ROS, gpu-based-opengl.
+
+```bash
+docker run -it --privileged --runtime=nvidia --network bridge -p 22222:22 --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all  -e "DISPLAY=$DISPLAY" -v /tmp/.X11-unix:/tmp/.X11-unix -v /dev:/dev --name noetic_nvidia osrf/ros:noetic-desktop-full /bin/bash
+```
+
+**Run This One**
+
+```bash
+docker run -it --privileged --runtime=nvidia --network bridge -p 22222:22 --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all  -e "DISPLAY=$DISPLAY" -v /tmp/.X11-unix:/tmp/.X11-unix -v /dev:/dev --name limx dknt/limx-image:first /bin/bash
+```
+
+### 2.1.2 Upload Image to Docker Hub
+
+```shell
+# Login
+docker login
+# Tag an image
+docker tag limx-image:latest dknt/limx-image:first
+# Push the image to Docker Hub
+docker dknt/limx-image:first
+```
+
 ## 2.2 Nvidia Container Toolkit
 
-It is recommended to use the NVIDIA Container Toolkit to access the GPU on the host machine.
+It is recommended to use the NVIDIA Container Toolkit to access the GPU on the host machine. Installation:
 
-> TODO
+```shell
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg && curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
+```
+
+Configuration for Docker:
+
+```shell
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+## 2.3 Wayland Forwarding
+
+Install dependencies on the host system:
+
+```bash
+sudo apt install libwayland-client0 libwayland-egl1 libwayland-server0
+```
+
+Install `xwayland` on the host.
+
+```bash
+sudo apt-get install xwayland
+```
+
+```bash
+docker run -it --privileged --runtime=nvidia --network bridge -p 22222:22 --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all  -e "DISPLAY=$DISPLAY" -v /tmp/.X11-unix:/tmp/.X11-unix -v $HOME/.Xauthority:/home/ivan/.Xauthority:ro -v /dev:/dev --device /dev/dri --group-add video --name limx dknt/limx-image:first
+
+# Install 
+sudo apt install xwayland
+```
+
+The following command still use X11...
+
+```bash
+docker run -it --privileged --runtime=nvidia --network bridge -p 22222:22 --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all  -e "DISPLAY=$DISPLAY" -v /tmp/.X11-unix:/tmp/.X11-unix -v $HOME/.Xauthority:/home/ivan/.Xauthority:ro -v /dev:/dev --device /dev/dri --group-add video --name limx dknt/limx-image:first
+```
+
+On the host machine:
+
+```shell
+xhost +
+```
 
 ## _ Start a docker project
 
