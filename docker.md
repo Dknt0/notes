@@ -46,12 +46,9 @@ sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin 
 Rootless mode.
 
 ```shell
-sudo groupadd docker
 sudo usermod -aG docker $USER
-newgrp docker
 # Logout and check
 ```
-
 
 ## 0.2 Docker Desktop
 
