@@ -48,7 +48,7 @@ git clone https://github.com/limxdynamics/rl-deploy-ros-cpp.git
 
 Then build the workspace.
 
-There is a virtual joystick provided by LIMX.
+There is a virtual joystick provided by LimX.
 
 ```shell
 # Virtual joystick
@@ -76,17 +76,9 @@ Run the example simulation and control program.
 roslaunch pointfoot_gazebo empty_world.launch
 # Run the control program
 rosrun pointfoot_sdk_lowlevel pf_groupJoints_move
-```
-
-Run `PlotJuggler` to visualize robot states:
-
-```shell
+# Run PlotJuggler to visualize robot states
 roslaunch robot_visualization pointfoot_plot_sim.launch
-```
-
-Run `RViz` to visualize robot states:
-
-```shell
+# Run RViz to visualize robot states
 roslaunch robot_visualization pointfoot_rviz_hw.launch
 ```
 
@@ -95,6 +87,8 @@ roslaunch robot_visualization pointfoot_rviz_hw.launch
 Simulator IP: `127.0.0.1`.
 
 Real robot IP: `10.192.1.2`.
+
+Robot states contain the position, velocity and torque of each joint.
 
 Control commands are saved as `datatypes.RobotCmd`, which contains the following attributes:
 
@@ -146,7 +140,7 @@ API brief description:
 // Get the instance of PointFoot
 PointFoot* pf = PointFoot::getInstance();
 // Initialization
-pf->init("your-robot-ip")
+pf->init("your-robot-ip");
 // Get the number of motors
 uint32_t motor_num = pf->getMotorNumber();
 // Register an IMU callback
@@ -165,7 +159,7 @@ pf->setRobotLightEffect(limxsdk::PointFoot::STATIC_RED);
 
 ## 3.2 RL Motion Control
 
-We are talking about deploying a model trained from Legged Gym. For more information 
+We are talking about deploying a model trained in Legged Gym.
 
 Install `onnxruntime` library version v1.10.0 [here](https://github.com/microsoft/onnxruntime/releases/tag/v1.10.0).
 
@@ -209,10 +203,65 @@ mv your_file.bag.active your_file.bag
 
 # 5 System Structure
 
-The low-level communication of TRON1 is based on EtherCat. However, the implementation details are hidden for us. The SDK provides a low-level API, which can be used to do **PD joint control**. The only way we 
+The low-level communication of TRON1 is based on EtherCat. However, the implementation details are hidden for us. The SDK provides a low-level API, which can be used to do **PD joint control** in position, velocity and effort mode. The only way we can control the motor is the `publishRobotCmd` function.
 
+The cpp deployment code is implemented based on the `hardware_interface` of ROS.
 
+The developers write two customized `hardware_interface` classes: `HybridJointInterface` and `ContactSensorInterface`. See `rl-deploy-ros-cpp/robot_common`.
 
+Interfaces in the point foot hw: `jointStateInterface_`, `hybridJointInterface_`, `imuSensorInterface_` and `contactSensorInterface_`. They provide resources to the controller named `robot_controller/PointfootController`.
 
+## 5.1 Robot Hardware Interface
 
+LimX developers provide a library to read and write all components of the robot, such as drivers, encoders, sensors and joystick, hiding the EtherCat communication details.
 
+**Observation**: Callback functions are registered in LimX subscription `subscribeRobotState` and `subscribeImuData`, in which the sensor data are saved in realtime buffers `realtime_tools::RealtimeBuffer<data-type>` in a non-RT mode. Then, the `read` function simply retrieves the data from the buffers without EtherCat related things.
+
+**User Command**: A callback is registered in `subscribeSensorJoy`, which check the joystick state then start or stop the controller calling `startBipedController` and `stopBipedController`. It also computes a robot velocity command then publishes it to the controller via ROS topic.
+
+**Failure Handle**: A callback is registered in `subscribeDiagnosticValue`. It updates the calibration state, and shut the robot down via `stopBipedController` when error occurs.
+
+**read()** just copy the joint and IMU data from RT buffer to the data buffer in RobotHW. The contact sensor is not handled.
+
+**write()** constructs the robotCmd_ according to joint buffer in RobotHW, then publish it to the controller using LimX API `publishRobotCmd`.
+
+In `setupJoints`, `setupImu` and `setupContactSensor`, the hardware handles, which take the pointer to the data buffer in RobotHW as parameters, are created then registered into the corresponded hardware interfaces.
+
+> Is the urdf file really necessary in `setupJoints`?
+
+`startBipedController` calls `switch_controllers_client_` with `controller_manager_msgs::ListControllers` and `list_controllers_client_` with `controller_manager_msgs::SwitchController` to check then start a controller named `/controllers/pointfoot_controller`.
+
+`stopBipedController` calls `switch_controllers_client_` to stop the controller, then use LimX API `publishRobotCmd` to set the robot to damping mode.
+
+## 5.2 RobotHWLoop
+
+`RobotHWLoop` is a class to run the control loop. It contains a `controller_manager` as member variable. The **control frequency** is set to 500Hz and the **cycle time error threshold** is 0.002s by default. `RobotHWLoop` starts a loop thread in constructor, periodically executing the control loop: `HardwareInterface::read`, `ControllerManager::update` and `HardwareInterface::write`.
+
+> `std::chrono::high_resolution_clock` is used.
+
+## 5.3 Robot Controller
+
+> Parameters in `robot_controllers/config/pointfoot/${ROBOT_TYPE}/params.yaml` are worth checking.
+
+Controllers are ROS plugins. They inherit from `controller_interface::MultiInterfaceController<hardware-interface-classes>`. In the `init()` function, the pointer of `RobotHW` is given as parameter, then `loadRLCfg()` and `loadModel` are called. The controller can get hardware interface or handle via `robot_hw->get<interface-class>()`.
+
+`PointfootController` inherits from `ControllerBase`.
+
+In `loadRLCfg()`, the controller reads the parameters from the ROS parameter server, not directly from the yaml file.
+
+In `loadModel()`, Ort environment and session are created, then the input and output parameters are retrieved.
+
+In `starting()`, the default joint position are set to the current joint position.
+
+In `update()`, functions `handleStandMode()` and `handleWalkMode()` according to the `mode_`.
+
+In `handleStandMode()`, the robot move from the current position to the stand position. But in the stand position the joint positions are all zero.
+
+In `handleWalkMode()`, `computeObservation()` and `computeActions` are called if the decimation is meet, i.e., the policy inference is not updated in every control cycle. Then the target joint positions are computed taking maximum torque as constraint then set in joint handle.
+
+In `computeObservation()` the orientation is get from the IMU. Then the observation is computed.
+
+The controller is loaded via `controller_manager/controller_manager` in the launch file.
+
+> What is `power_limit` and `contact_threshold`?
+> `imu_orientation_offset`

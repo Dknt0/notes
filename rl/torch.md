@@ -1,4 +1,4 @@
-PyTorch Tensor
+PyTorch Note
 ===
 
 `torch.zeros()`

@@ -166,7 +166,6 @@ Rigid shape property contains friction coefficient.
 
 `get_asset_rigid_body_names`
 
-
 ### 1.2.2 Inertial Properties
 
 Isaac Gym can override inertial properties of rigid bodied from file. Refer to documentation.
