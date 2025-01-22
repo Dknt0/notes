@@ -169,6 +169,64 @@ websocat wss://echo.websocket.org
 websocat -v wss://echo.websocket.org
 ```
 
+# 3 UWebSockets
 
+> UWebSockets only support WebSockets server end. To build an client end application, consider using other libraries.
+
+UWebSockets, based on USockets, is a head-only WebSocket/HTTP library for C++. It supports server mode and provides a simple API for sending and receiving messages.
+
+Server code sample:
+
+```cpp
+#include <App.h>
+int main() {
+  uWS::App app = uWS::App()
+    // Add a WebSocket endpoint at ws://localhost:9001
+    .ws<PerSocketData>(
+        "/*",
+        {.open =
+              [](uWS::WebSocket<false, true, PerSocketData> *ws) {
+                std::cout << "[SERVER] WebSocket connection opened!" << std::endl;
+              },
+          .message =
+              [](uWS::WebSocket<false, true, PerSocketData> *ws, std::string_view message, uWS::OpCode op_code) {
+                std::cout << "[SERVER] Received message: " << message << std::endl;
+                /// Do something...
+                if (message == "get_status") {
+                  ws->send("status: OK");
+                } else {
+                  ws->send("task: " + std::string(message) + " completed");
+                }
+              },
+          .close =
+              [](uWS::WebSocket<false, true, PerSocketData> *ws, int code, std::string_view message) {
+                std::cout << "[SERVER] WebSocket connection closed!" << std::endl;
+              }})
+    // Add an HTTP endpoint at http://localhost:9001
+    .get("/",
+          [](uWS::HttpResponse<false> *res, uWS::HttpRequest *req) {
+            std::cout << "[SERVER] HTTP request received!" << req->getUrl() << std::endl;
+            res->end("<h1>Hello world!</h1>");
+          })
+    // Add another HTTP endpoint at http://localhost:9001/status
+    .get("/status",
+          [](uWS::HttpResponse<false> *res, uWS::HttpRequest *req) {
+            std::cout << "[SERVER] HTTP request received!" << req->getUrl() << std::endl;
+            res->end("status: OK");
+          })
+    // Listen on port 9001
+    .listen(9001,
+            [](auto *token) {
+              if (token) {
+                std::cout << "[SERVER] Listening on port " << 9001 << std::endl;
+              } else {
+                std::cout << "[SERVER] Failed to listen on port " << 9001 << std::endl;
+              }
+            })
+    // Start the loop
+    .run();
+  return 0;
+}
+```
 
 

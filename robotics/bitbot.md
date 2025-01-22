@@ -109,47 +109,11 @@ struct UserData
 using Kernel = bitbot::MujocoKernel<UserData, "time", "sin">;
 ```
 
-# 2 Code Structure
+# 2.2 Code Basics
 
-## 2.1 Modern C++ Basis in Bitbot
+## 2.1 Modern C++ Basics in Bitbot
 
-### `std::variant` (C++17)
 
-`std::variant` is a C++17 feature that allows you to create a type-safe union.
-
-Example:
-
-```cpp
-#include <variant>
-#include <iostream>
-std::variant<uint32_t, double> var;
-var = uint32_t(10);
-if (std::holds_alternative<uint32_t>(myVariant)) {
-  std::cout << std::get<uint32_t>(var) << std::endl;
-}
-var = double(3.14);
-if (std::holds_alternative<double>(myVariant)) {
-  std::cout << std::get<double>(var) << std::endl;
-}
-```
-
-The traditional union is not type-safe, and we don't know which type is stored currently. Moreover, traditional union does not support complex type, such as `std::string`.
-
-### Designated Initializer (C++20)
-
-Designated Initializer is a C++20 feature that allows you to initialize a struct with designated fields.
-
-Sample code:
-
-```cpp
-class MyClass {
-public:
-  int a;
-  double b;
-};
-
-MyClass my_class = {.a = 10, .b = 3.14};
-```
 
 ## 2.2 WebSockets
 
@@ -177,3 +141,54 @@ Supported message types:
 ```
 
 Have fun!
+
+# 3 Code structure
+
+## 3.1 `bitbot_kernel`
+
+
+
+## 3.2 `backend`
+
+
+
+
+
+## 3._ `extra_data`
+
+## 3._ `compile_time_string`
+
+
+
+
+
+## 3._ `logger`
+
+`spdlog` is used as the logger. The code is written in a singleton pattern.
+
+## 3._ `time_func`
+
+Why not use `std::chrono`?
+
+## 3._ Realtime Setting
+
+Set priority of the process.
+
+Set deadline policy of the process.
+
+Set CPU affinity of the process. Stick the thread to a specific core.
+
+> In real-time systems or applications that require low-latency, controlling CPU affinity can ensure that critical threads are given consistent CPU time on a specific core, which reduces unpredictability and latency.
+
+
+
+
+
+
+
+
+
+
+
+
+

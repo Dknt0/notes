@@ -255,13 +255,27 @@ sudo prime-select nvidia
 There is a ROS Noetic container with everything we need, including ROS, gpu-based-opengl.
 
 ```bash
-docker run -it --privileged --runtime=nvidia --network bridge -p 22222:22 --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all  -e "DISPLAY=$DISPLAY" -v /tmp/.X11-unix:/tmp/.X11-unix -v /dev:/dev --name noetic_nvidia osrf/ros:noetic-desktop-full /bin/bash
+docker run -it --privileged --runtime=nvidia --network bridge -p 22222:22 --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all -e "DISPLAY=$DISPLAY" -v /tmp/.X11-unix:/tmp/.X11-unix -v /dev:/dev --name noetic_nvidia osrf/ros:noetic-desktop-full /bin/bash
 ```
 
 **Run This One**
 
 ```bash
-docker run -it --privileged --runtime=nvidia --network bridge -p 22222:22 --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all  -e "DISPLAY=$DISPLAY" -v /tmp/.X11-unix:/tmp/.X11-unix -v /dev:/dev --name limx dknt/limx-image:first /bin/bash
+docker run -it --privileged --runtime=nvidia --network bridge -p 22222:22 --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all -e "DISPLAY=$DISPLAY" -v /tmp/.X11-unix:/tmp/.X11-unix -v /dev:/dev --name limx dknt/limx-image:latest /bin/bash
+```
+
+If the network of a container with bridge mode is not working, you may need to enable the ipv4 forwarding.
+
+```shell
+sudo sysctl -w net.ipv4.ip_forward=1
+# Check the value
+sudo sysctl net.ipv4.ip_forward
+```
+
+Then restart the docker service.
+
+```shell
+sudo systemctl restart docker
 ```
 
 ### 2.1.2 Upload Image to Docker Hub

@@ -1,186 +1,149 @@
-# ROS 2 Humble
+# ROS 2 Note
 
-> ROS 2 Humble 笔记
+> TODO: Rewrite this tutorial in English. Make this more like a cheat sheet, and provide some read-to-copy sample codes, both in C++ and Python. Add ROS 2 control package. Rewrite the note of the new Gazebo.
+> Double check the commands in this file.
+
+> Reference:
 > 
-> 参考：
-> 
-> https://docs.ros.org/en/humble/
+> [ROS 2 Humble Documentation](https://docs.ros.org/en/humble/)
 > 
 > Dknt 2023.6
 
-ROS 2 Humble 是 ROS 2 的第一个 LTS 发行版，运行在 Ubnutu 22.04 系统上。ROS 2 与 ROS 1 最大的区别在于底层通信协议的改变 —— DDS。ROS 2 是实时系统。可以运行在裸机上。跨平台。
+ROS 2 Humble is the first LTS release of ROS 2, running on Ubuntu 22.04. The biggest difference between ROS 2 and ROS 1 is the change of the underlying communication protocol: DDS. ROS 2 is a real-time system. It can run on bare metal. Cross-platform.
 
-ROS 2 Humble 也可以通过源码编译运行在其他系统上。
+ROS 2 Humble can also be compiled and run on other systems from source code.
 
-# 1 命令行
+# 1 Command Line Interface
 
-* 运行
+Package management commands.
 
 ```shell
-ros2 run <pkg_name> <node_name> # 运行节点
+# Create a new package
+ros2 pkg create <package_name> --build-type ament_cmake [--dependencies rclcpp ...]
 ```
 
-重映射，用于改变节点、服务、话题名字。
+Node creation commands.
 
 ```shell
-ros2 run turtlesim turtlesim_node --ros-args --remap __node:=my_turtle
+# Run a node
+ros2 run <pkg_name> <node_name>
+# Run a node with topic, service, remapping
+ros2 run <pkg_name> <node_name> --ros-args --remap __node:=my_turtle
+# Run a node with parameters to be loaded from a file
+ros2 run <pkg_name> <node_name> --ros-args --params-file <file_name>
+# Run a node with a specific log level
+ros2 run <pkg_name> <node_name> --ros-args --log-level Debug
 ```
 
-启动同时设置参数
+> Logging levels: `Fatal`, `Error`, `Warn`, `Info`, `Debug`. The `Info` level is the default level.
+
+Node related commands.
 
 ```shell
-ros2 run <package_name> <executable_name> --ros-args --params-file <file_name>
-```
-
-* 节点
-
-```shell
-ros2 node info <node_name>
+# List all nodes
 ros2 node list
+# Kill a node
+ros2 lifecycle set <node_name> shutdown
+# Get node info
+ros2 node info <node_name>
 ```
 
-* 话题
+Topic related commands.
 
 ```shell
+# List all topics
 ros2 topic list [-t]
+# Echo a topic
 ros2 topic echo <topic_name>
+# Get topic info
 ros2 topic info <topic_name>
+# Publish a topic
 ros2 topic pub [--once] [--rate 1] <topic_name> <msg_type> <arguments>
-ros2 topic hz /turtle1/pose # 统计话题频率
+# Get topic frequency
+ros2 topic hz <topic_name>
 ```
 
-ROS 2 的话题好像没有自动补全功能。可以用 rqt 来发布话题，很方便。
-
-* 服务
+Service related commands.
 
 ```shell
+# List all services
 ros2 service list [-t]
+# Get service type
 ros2 service type <service_name>
-ros2 service find <type_name> # 搜寻特定类型的服务
+# Find service
+ros2 service find <type_name>
+# Call a service
 ros2 service call <service_name> <service_type> <arguments>
 ```
 
-* 参数
+Parameter related commands.
 
-ROS 2 中每一个节点有自己的参数。ROS 2 没有参数服务器，这一点与 ROS 1 不同。（可能是与通信结构有关，不存在中心节点）
-
-参数类型可以是整数、浮点、布尔、字符串、列表。
+> There is no parameter server in ROS 2. Parameter types can be integers, floats, booleans, strings, and lists.
 
 ```shell
+# List all parameters
 ros2 param list
+# Get a parameter
 ros2 param get <node_name> <parameter_name>
+# Set a parameter
 ros2 param set <node_name> <parameter_name> <value>
-ros2 param dump <node_name> # 显示节点全部参数
-```
-
-记录参数到文件，从文件中加载参数
-
-```shell
-ros2 param dump <node_name> > <parameter_file.yaml>
+# Dump all parameters
+ros2 param dump <node_name>
+# Record parameters to a file
+ros2 param dump <node_name> <parameter_file.yaml>
+# Load parameters from a file (Can not load read-only parameters)
 ros2 param load <node_name> <parameter_file.yaml>
 ```
 
-注意，这种方式无法加载只读参数，命令行中会报错。
-
-可以在启动节点时候加载参数，这样可以设置只读参数。
+Action related commands.
 
 ```shell
-ros2 run <package_name> <executable_name> --ros-args --params-file <file_name>
-```
-
-* 动作
-
-```shell
+# List all actions
 ros2 action list [-t]
+# Get action info
 ros2 action info <action_name>
+# Send goal to an action
 ros2 action send_goal [--feedback] <action_name> <action_type> <values>
 ```
 
-* 查询
-
-显示话题、服务详细信息。这里的`type_name`可以是话题、服务、动作。
+Display detailed information about a topic, service, or action.
 
 ```shell
 ros2 interface show <type_name>
 ```
 
-* 启动
+Launch a launch file.
 
 ```shell
 ros2 launch <pkg_name> <launch_file.py>
 ```
 
-* 录包与重放
-
-录包与重放是针对话题的。
+Record and replay related commands.
 
 ```shell
-ros2 bag record <topic_name> # 录包
-ros2 bag record [-o bag_file_name] <topic_name1> <topic_name2> # 指定包名
-ros2 bag record -a # 录制全部话题
+# Record a bag file
+ros2 bag record <topic_name>
+# Record a bag file with a specific name
+ros2 bag record [-o bag_file_name] <topic_name1> <topic_name2>
+# Record all topics
+ros2 bag record -a
+# Get bag file info
 ros2 bag info <bag_file_name>
+# Play a bag file
 ros2 bag play <bag_file_name>
 ```
 
-> 注意，原始视频、点云流话题录包相当占用磁盘，录制前需要保证有足够的存储空间。
-
-* rqt 工具
-
-很好用。
-
-局限：不能操作参数。
-
-* 日志
-
-可以用 rqt 浏览、过滤、保存、加载日志。
-
-日志分为五个等级：
-
-```shell
-Fatal # 灾难
-Error # 错误
-Warn # 警告
-Info # 信息
-Debug # debug 信息
-```
-
-通常情况默认等级为`Info`，默认等级以下的日志会被隐藏。
-
-可以在启动节点时附加参数来改变默认日志等级：
-
-```shell
-ros2 run <pkg_name> <node_name> --ros-args --log-level WARN
-```
-
-* 包管理
-
-创建新功能包
-
-```shell
-ros2 pkg create <package_name> --build-type ament_cmake [--dependencies rclcpp ...]
-```
-
-# 依赖管理
+## Dependency management
 
 rosdep
 
 1
 
-# 1 开发
-
-ROS 2 编程与 ROS 1 有很大区别（C++）。
+# 2 Development
 
 ROS 2 的一个进程中可以运行多个节点。在 C++ 中，节点被抽象成一个类，我们可以继承`rclcpp::Node`类，来建立自己的节点，实现自己的功能。
 
-在节点基类中实现了创建发布者、服务器等功能，通过`this->create_*()`来创建，不需要“句柄”。这些函数返回一个共享指针，因此在我们的节点类需要创建一个对应话题/服务类型的共享指针。
-
-回调函数可以写为节点类的成员函数，注册时需要使用`std::bind`进行适配，详见例程。
-
-ROS 2 C++ 编程中大量使用了共享指针`std::shared_ptr<T>`。
-
-在 ROS 2 源码中提供了多种通信的编程实现方式，包括类方法、Lambda 表达式等，可以根据实际情况选用最合适的。
-
-## 1.1 colcon 工具
+## 2.1 colcon 工具
 
 `colcon`是 `catkin`, `ament` 等 ROS 编译工具的集成。
 
@@ -765,6 +728,11 @@ Python 启动文件位于 package/launch 目录下
 
 ```
 
+# 3 Launch
+
+> TODO: Python launch file
+
+---
 # 2 常用功能包
 
 ## 2.1 std_msgs
@@ -807,8 +775,9 @@ ros2 run tf2_ros tf2_echo [source_frame] [target_frame]
 
 ```
 
-# note
+# Other Tricks
 
-应该整理一套可以直接拷贝的 ros 模板
+## URDF
 
-C++ 和 Python 的都需要
+We can use rviz to visulize a robot.
+

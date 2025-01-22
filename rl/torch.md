@@ -21,4 +21,6 @@ PyTorch Note
 
 `torch.norm()`
 
-`torch.cat()`
+`torch.cat()`: 
+
+`torch.stack()`: 

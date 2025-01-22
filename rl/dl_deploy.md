@@ -134,7 +134,7 @@ OpenVINO serves as one of the execution providers of Onnx Runtime. To use ONNX R
 > ONNX Runtime version `1.18.0` with OpenVINO version: `2024.1.0` is tested on my machine. Other version pairs do not work for me, unfortunately.
 
 ```shell
-./build.sh --config RelWithDebInfo --update --parallel  --use_openvino HETERO:GPU,CPU --build_shared_lib --build --cmake_extra_defines CMAKE_INSTALL_PREFIX=/home/dknt/Library/onnxruntime-openvino-1.18.0
+./build.sh --config RelWithDebInfo --update --parallel  --use_openvino AUTO:GPU,CPU --build_shared_lib --build --cmake_extra_defines CMAKE_INSTALL_PREFIX=/home/dknt/Library/onnxruntime-openvino-1.18.0
 ```
 
 Additionally, to build ONNX Runtime with both CUDA and OpenVINO, run the following command (suppose all environment variables are properly set):
