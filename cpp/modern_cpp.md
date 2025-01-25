@@ -93,7 +93,7 @@ struct Helper<TABLE_SIZE, D...> {
   static constexpr std::array<int, TABLE_SIZE> table = {D...};
 };
 constexpr std::array<int, TABLE_SIZE> table = Helper<>::table;
-// static constexpr std::array<int, 10UL> Helper<10, 0, 1, 4, 9, 16, 25, 36, 49, 64, 81>::table = {{0, 1, 4, 9, 16, 25, 36, 49, 64, 81}}
+// static constexpr std::array<int, 10UL> Helper<10, 0, 1, 4, 9, 16, 25, 36, 49, 64, 81>::table = {0, 1, 4, 9, 16, 25, 36, 49, 64, 81}
 ```
 
 ## `constexpr` (C++11)
@@ -292,7 +292,7 @@ constexpr auto table = [] {
   for (unsigned i = 0; i < TABLE_SIZE; i++) A[i] = i * i;
   return A;
 }();
-// static constexpr std::array<int, 10UL> table = {{0, 1, 4, 9, 16, 25, 36, 49, 64, 81}}
+// static constexpr std::array<int, 10UL> table = {0, 1, 4, 9, 16, 25, 36, 49, 64, 81}
 ```
 
 ## Pack Expansion (C++17)
