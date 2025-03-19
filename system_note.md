@@ -41,8 +41,6 @@ vncserver -localhost no :2
 
 The vncserver will be available on `current_ip:5902`
 
-
-
 # RustDesk
 
 It's better to use RustDesk for remote desktop control. [rustdesk](https://rustdesk.com/)
@@ -63,7 +61,7 @@ options nouveau modeset=0
 Save, then run this command:
 
 ```shell
-sudo update-initramfs –u
+sudo update-initramfs -u
 ```
 
 Reboot, enter the following command to check if nouveau has been closed.
@@ -443,3 +441,17 @@ Then the local computer can be connected using:
 ```shell
 ssh username@<public-server-ip> -p 22222
 ```
+
+# Terminal and Fonts
+
+Install fonts for user:
+
+```shell
+mkdir ~/.fonts
+mv <font-file> ~/.fonts
+fc-cache -f -v
+```
+
+# `zsh` Setup
+
+

@@ -1,7 +1,7 @@
 Modern C++ Note
 ===
 
-> The first time I met modern C++ is in Bitbot project, written by [God Yuan](https://lmy.name). I found it is extremely efficient and concise, while it is hard to understand. Then I decided to use 
+> The first time I met modern C++ is in Bitbot project, written by [God Yuan](https://lmy.name). I found it is extremely efficient and concise, while hard to understand (for users). What a nice feature! Just feel and use it.
 > 
 > Dknt 2025.1
 
@@ -257,6 +257,10 @@ constexpr int factorial_cpp14(int n) {
 }
 ```
 
+Constant `std::` containers: `std::array`, `std::tuple`. `std::inger_sequence`.
+
+Constant `std::` functions:
+
 # C++17
 
 ## `std::variant` (C++17)
@@ -317,7 +321,7 @@ There are four types of fold expressions:
 
 1. Unary right fold `(pack op ...)`: `(pack[0] op (... op (pack[N-1] op pack[N])))`
 2. Unary left fold `(... op pack)`: `(((pack[0] op pack[1]) op ...) op pack[N])`
-3. Binary right fold `(pack op ... op init)`: `(pack[0] op (... op (pack[N-1] op init)))`
+3. Binary right fold `(pack op ... op init)`: `(pack[0] op (... op (pack[N] op init)))`
 4. Binary left fold `(init op ... op pack)`: `(((init op pack[0]) op ...) op pack[N])`
 
 * `op` - any of the following 32 binary operators: `+` `-` `*` `/` `%` `^` `&` `|` `=` `<` `>` `<<` `>>` `+=` `-=` `*=` `/=` `%=` `^=` `&=` `|=` `<<=` `>>=` `==` `!=` `<=` `>=` `&&` `||` `,` `.*` `->*`. In a binary fold, both ops must be the same.
@@ -429,3 +433,29 @@ There are some standard concepts defined in `<concepts>`:
 * `std::totally_ordered_with` - Types that are totally ordered with another type
 
 # C++23
+
+# Examples
+
+## 1 Reference Wrapper & Pointer Wrapper
+
+Use reference&pointer wrapper can achieve template specialization.
+
+```cpp
+template <typename T, T* Ptr>
+struct SpecializationExample {
+    void doSomething() {
+        std::cout << "Default" << std::endl;
+    }
+};
+
+template <typename T, T* Ptr>
+struct SpecializationExample<T, nullptr> {  // Specialize for null pointer
+    void doSomething() {
+        std::cout << "Null pointer" << std::endl;
+    }
+};
+```
+
+In metaprogramming.
+
+

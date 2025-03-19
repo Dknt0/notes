@@ -39,13 +39,13 @@ cd legged_gym && pip install -e .
 Add path:
 
 ```shell
-mkdir $CONDA_PREFIX/etc/conda/activate.d
+mkdir $CONDA_PREFIX/etc/conda/activate.d -p
 echo "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CONDA_PREFIX/lib" >> $CONDA_PREFIX/etc/conda/activate.d/env_vars.sh
 ```
 
 2. AttributeError: module `numpy` has no attribute `float`
 
-Open `<path-to-conda>/envs/legged-gym/lib/python3.8/site-packages/numpy/__init__.py`, line 135, change `np.float` to `float`.
+Open `The file in which the error reported`, line 135, change `np.float` to `float`.
 
 3. AttributeError: module `distutils` has no attribute `version`
 
@@ -83,6 +83,10 @@ Rigid body properties: Randomize base mass
 The initial position of each actor is recorded in `self.env_origins`, which is defined in `_get_env_origins()` depending on terrain type.
 
 Feet body indices, penalized contact body and termination contact indices are recorded during creation.
+
+# 3 `rsl_rl` PPO
+
+`VecEnv.step(actions) -> [observation, privileged_ovservation, reward, reset, extra_data]` Perform a step of simulation, in which the simulator is run for `decimation` steps.
 
 
 

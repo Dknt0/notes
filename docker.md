@@ -286,7 +286,7 @@ docker login
 # Tag an image
 docker tag limx-image:latest dknt/limx-image:first
 # Push the image to Docker Hub
-docker dknt/limx-image:first
+docker push dknt/limx-image:first
 ```
 
 ## 2.2 Nvidia Container Toolkit
