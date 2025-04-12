@@ -155,32 +155,57 @@ Have fun!
 
 ## 3.1 `bitbot_kernel`
 
+CPU core allocation:
 
+1. The main thread, i.e. `Kernel::doRun()`, is sticked to core 4.
+2. Kernel monitor data writer is sticked to core 5.
 
-## 3.2 `backend`
+### 3.1.1 `kernel`
 
-JSON library `glaze` is used in backend to save a class instance to a JSON string.
+`KernelTpl` uses CRTP pattern. The derived class should implement the following functions: `doRun()` and `doStart()`.
 
+`KernelTpl::Run()` is user interface to start the kernel. It calls `doRun()` in the derived class.
 
+`doStart()` in the derived class is called in the `Start` event callback.
 
+Events should be registered before states.
 
-## 3._ `extra_data`
+### 3.1.2 `backend`
 
-## 3._ `compile_time_string`
+`bitbot::Backend` is a class to handle the HTTP and WebSocket servers. It is written with library `uWebSockets` as HTTP and WebSocket server. JSON library `glaze`, which requires a really modern C++ version, is used in backend to save a class instance to a JSON string.
 
+There are 3 HTTP servers:
 
+1. `/monitor/headers` get monitor headers. JSON class is `KernelTpl::MonitorHeader`. JSON string is set in kernel.
+2. `/monitor/statelist` get state id and name. Relative json class is `StatesType`.
+3. `/setting/control/get` get event name and its corresponding key. Relative json class is `BackendSettings`.
 
+All message sent between the WebSocket server and client should be `WebsocketMessageType`. The WebSocket server handles the following messages:
 
+1. `request_data`. The server then fills the monitor data and sends it back.
+2. `events`. 
 
-## 3._ `logger`
+The frontend should send `request_data` message periodically, and send `events` message the corresponding event is triggered.
 
-`spdlog` is used as the logger. The code is written in a singleton pattern.
+The received events are saved in a `readwritequeue` in the backend. Where are these events processed?
 
-## 3._ `time_func`
+### 3.1.3 `bus_manager`
 
-Why not use `std::chrono`?
+`BusManagerTpl` uses CRTP pattern. It creates devices from XML file.
 
-## 3._ Realtime Setting
+`ReadBus()` and `WriteBus()` are called in `Kernel::KernelLoopTask()`. These two function are main interfaces during processing.
+
+### 3.1.4 `device`
+
+In device factory file `DeviceFactory` and `DeviceRegistrar: DeviceRegistrarBase` are defined. They are all base classes.
+
+`DeviceFactory` uses singleton pattern. `DeviceRegistrar` of different device types are inserted in factory, then user can use the factory to create device registered in factory, parsing various device config from XML file.
+
+`DeviceRegistrar` is used to create devices with the same type based on XML file.
+
+### 3.1.5 Realtime Configuration
+
+> Test these functions.
 
 Set priority of the process.
 
@@ -190,9 +215,51 @@ Set CPU affinity of the process. Stick the thread to a specific core.
 
 > In real-time systems or applications that require low-latency, controlling CPU affinity can ensure that critical threads are given consistent CPU time on a specific core, which reduces unpredictability and latency.
 
+### 3.1.6 Others
+
+* `config_parser`
+
+`ConfigParser` is used to parse the xml file.
+
+`DeviceConfigs` is not used further, since the reading function can read nothing. Parsing is done in Kernel and BudManager directly.
+
+* `extra_data`
+
+`ExtraDataImpl` is a template class to store extra data. It takes a `CTString` pack as the template argument. Extra datas can be set by index or name string, since `CTSTuple` can convert `CTString` to index at compile time.
+
+* `compile_time_string`
+
+`CTString` and `CTSTuple` are defined.
+
+* `logger`
+
+`spdlog` is used as the logger. The code is written in a singleton pattern.
+
+* `time_func`
+
+Delay functions.
+
+* `file_writer`
+
+`FileWriter` keeps a `readwritequeue` to storage data, and crates a thread to write data to file periodically.
+
+## 3.2 `cifx_kernel`
+
+### 3.2.1 EtherCAT Bacis
+
+EtherCAT uses a "processing-on-the-fly" mechanism, where data frames pass through each node (slave device) in a daisy-chained topology. Each node reads or writes data in real time as the frame travels through the network, minimizing latency and maximizing efficiency. A typical EtherCAT network has one master and multiple slaves. **Master card** (a PCIe card) is a EtherCAT master interface installed in the PC.
+
+**SDO** (Service Data Object) is a communication mechanism inherited from the CANopen protocol, which EtherCAT adopts for configuration and parameterization. SDOs are used for non-real-time, asynchronous data exchange, such as: configuration, parameterization, and diagnostics.
+
+PDOs (Process Data Objects) handle cyclic real-time data.
+
+<mark>How to display the received status word?</mark>
+
+## 3.3 `mujoco_kernel`
+
 # 4 RL Deploy
 
-The code provided by God Z. is using `libtorch` as inference engine. We may use `onnxruntime` later.
+The code provided by God Z. uses `libtorch` as inference engine. We may use `onnxruntime` later.
 
 Torque compensate?
 

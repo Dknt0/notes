@@ -434,6 +434,73 @@ There are some standard concepts defined in `<concepts>`:
 
 # C++23
 
+===
+
+## Compiler Hint Attributes (Since C++11)
+
+`[[noreturn]]` is a C++11 feature that tells the compiler that a function does not return. It is used for functions that terminate the program or throw exceptions unconditionally.
+
+```cpp
+[[noreturn]] void die() {
+    std::cerr << "Error" << std::endl;
+    std::exit(1);
+}
+```
+
+`[[nodiscard]]` is a C++17 feature that tells the compiler to issue a warning if the return value of a function is not used.
+
+```cpp
+[[nodiscard]] int get_value() {
+    return 42;
+}
+```
+
+`[[maybe_unused]]` is a C++17 feature that tells the compiler that a variable or function may be unused.
+
+```cpp
+[[maybe_unused]] int x = 42;
+```
+
+`[[fallthrough]]` is a C++17 feature that tells the compiler that a fallthrough in a switch statement is intentional.
+
+```cpp
+switch (x) {
+    case 1:
+        do_something();
+        [[fallthrough]];
+    case 2:
+        do_something_else();
+        break;
+}
+```
+
+`[[likely]]` and `[[unlikely]]` (C++20). They are used to provide hints to the compiler about the expected branch of an `if` statement.
+
+```cpp
+if (index < size) [[likely]] { 
+    // Optimized for fast execution
+} else [[unlikely]] { 
+    // Less optimized
+}
+```
+
+`[[no_unique_address]]` (C++20). It is used to indicate that a non-static data member does not require a unique address.
+
+```cpp
+struct A {
+    int x;
+    [[no_unique_address]] int y;
+};
+```
+
+`[[nodiscard("reason")]]` (C++23). It is used to provide a reason for the `[[nodiscard]]` attribute.
+
+```cpp
+[[nodiscard("Use the return value to check for errors")]] int get_value() {
+    return 42;
+}
+```
+
 # Examples
 
 ## 1 Reference Wrapper & Pointer Wrapper

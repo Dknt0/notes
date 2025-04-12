@@ -40,7 +40,7 @@ Add path:
 
 ```shell
 mkdir $CONDA_PREFIX/etc/conda/activate.d -p
-echo "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CONDA_PREFIX/lib" >> $CONDA_PREFIX/etc/conda/activate.d/env_vars.sh
+echo "export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:$CONDA_PREFIX/lib" >> $CONDA_PREFIX/etc/conda/activate.d/env_vars.sh
 ```
 
 2. AttributeError: module `numpy` has no attribute `float`
@@ -87,6 +87,27 @@ Feet body indices, penalized contact body and termination contact indices are re
 # 3 `rsl_rl` PPO
 
 `VecEnv.step(actions) -> [observation, privileged_ovservation, reward, reset, extra_data]` Perform a step of simulation, in which the simulator is run for `decimation` steps.
+
+In `rsl_rl`, the noise of action (stardard deviation) is `torch.Parameter` and is updated by the optimizer.
+
+The learning rate is updated w.r.t. KL divergence. When KL divergence is too large, meaning the policy changes too fast, the learning rate is decreased. Otherwise, the learning rate is increased.
+
+The total loss is the sum of three losses:
+
+1. Surrogate loss. PPO clip loss.
+2. Value function loss. This is a MSE loss.
+3. Entropy bonus loss is used to balance exploration and exploitation.
+
+Key functions in class `PPO`: `act()`, `process_env_step()`, `compute_returns()`, `update()`.
+
+Key functions in class `RolloutStorate`: `add_trasitions()`, `compute_returns()`, `mini_batch_generator()`.
+
+Key functions in class `OnPolicyRunner`: `learn()`, 
+
+Key functions in class `ActorCritic`: `act()`, `get_actions_log_prob()`, `evaluate()`, `entropy()`.
+
+Key functions in class `VecEnv`: `step()`.
+
 
 
 
