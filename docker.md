@@ -264,6 +264,29 @@ docker run -it --privileged --runtime=nvidia --network bridge -p 22222:22 --gpus
 docker run -it --privileged --runtime=nvidia --network bridge -p 22222:22 --gpus all -e NVIDIA_DRIVER_CAPABILITIES=all -e "DISPLAY=$DISPLAY" -v /tmp/.X11-unix:/tmp/.X11-unix -v /dev:/dev --name limx dknt/limx-image:latest /bin/bash
 ```
 
+```bash
+docker run -itd --network bridge \
+--name=bitbot_gz \
+--user ivan \
+--privileged \
+--gpus all \
+--env="NVIDIA_DRIVER_CAPABILITIES=all" \
+--env="QT_X11_NO_MITSHM=1" \
+--volume="/etc/localtime:/etc/localtime:ro" \
+-v /dev/bus/usb:/dev/bus/usb \
+--device=/dev/dri \
+--group-add video \
+-v /tmp/.X11-unix:/tmp/.X11-unix \
+--env="DISPLAY=$DISPLAY" \
+bitbot_gz_image:latest \
+/bin/bash
+```
+
+
+```bash
+sudo apt-get install '^libxcb.*-dev' libx11-xcb-dev libglu1-mesa-dev libxrender-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev
+```
+
 If the network of a container with bridge mode is not working, you may need to enable the ipv4 forwarding.
 
 ```shell

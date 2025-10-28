@@ -115,7 +115,8 @@ Before building, run the script `setupvars.sh`.
 Example C++ code:
 
 ```cpp
-TODO
+#include <openvino/openvino.hpp>
+
 ```
 
 Example `CMakeLists.txt`:
@@ -127,7 +128,12 @@ include_directories(${OpenVINO_INCLUDE_DIRS})
 target_link_libraries(target openvino::runtime)
 ```
 
-## 2.1 ONNX Runtime with OpenVINO
+## 2.1
+
+
+# 3 ONNX Runtime with OpenVINO
+
+> Use OpenVINO directly. This is really hard to build.
 
 OpenVINO serves as one of the execution providers of Onnx Runtime. To use ONNX Runtime with OpenVINO, we should **build ORT from source**:
 

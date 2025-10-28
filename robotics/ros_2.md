@@ -1,8 +1,5 @@
 # ROS 2 Note
 
-> TODO: Rewrite this tutorial in English. Make this more like a cheat sheet, and provide some read-to-copy sample codes, both in C++ and Python. Add ROS 2 control package. Rewrite the note of the new Gazebo.
-> Double check the commands in this file.
-
 > Reference:
 > 
 > [ROS 2 Humble Documentation](https://docs.ros.org/en/humble/)
@@ -145,7 +142,7 @@ ROS 2 的一个进程中可以运行多个节点。在 C++ 中，节点被抽象
 
 ## 2.1 colcon 工具
 
-`colcon`是 `catkin`, `ament` 等 ROS 编译工具的集成。
+`colcon` 是 `catkin`, `ament` 等 ROS 编译工具的集成。
 
 ROS 2 工作空间目录结构：
 
@@ -167,7 +164,7 @@ colcon build --symlink-install
 colcon build --packages-select package_name # 编译某个包
 ```
 
-`--symlink-install`将 python 文件移动到 install 目录下。
+`--symlink-install` 将 python 文件移动到 install 目录下。
 
 `setup.bash`位于`install`目录下，执行这个脚本，会把包中所有可执行文件和库文件添加到目录中。执行`setup.bash`会将当前包以及他的以来包添加到环境，`local_setup.bash`只将当前包添加到环境。
 
@@ -186,6 +183,16 @@ echo "source /usr/share/colcon_cd/function/colcon_cd.sh" >> ~/.bashrc
 echo "export _colcon_cd_root=/opt/ros/humble/" >> ~/.bashrc
 echo "source /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash" >> ~/.bashrc
 ```
+
+Colcon does not generate `compile_commands.json` by default, even with `--cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` it will generates `compile_commands.json` in the subdirectory of `build`, which will not recongnized by `clangd` or `clang-tidy`. To generate a global `compile_commands.json`, you can use `bear` tool, which is a wrapper for `colcon build`. It will generate a global `compile_commands.json` in the root directory of the workspace:
+
+```shell
+bear -- colcon build
+# To enable symlink install
+bear -- colcon build --symlink-install
+```
+
+```cmake
 
 ## 1.2 工作空间与 ROS 包
 
