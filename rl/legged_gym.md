@@ -5,14 +5,14 @@ Setup Environment for `legged_gym`
 
 Create a conda environment:
 
-```shell
+```bash
 conda create -n legged-gym python==3.8
 conda install pytorch torchvision torchaudio pytorch-cuda=12.4 -c pytorch -c nvidia
 ```
 
 Install `isaac_gym`:
 
-```shell
+```bash
 wget https://developer.nvidia.com/isaac-gym-preview-4
 tar -xf IsaacGym_Preview_4_Package.tar.gz
 cd isaacgym/python && pip install -e .
@@ -20,14 +20,14 @@ cd isaacgym/python && pip install -e .
 
 Install `rsl_rl` **v1.0.2**:
 
-```shell
+```bash
 git clone https://github.com/leggedrobotics/rsl_rl
 cd rsl_rl && git checkout v1.0.2 && pip install -e .
 ```
 
 Install `legged_gym`:
 
-```shell
+```bash
 git clone https://github.com/leggedrobotics/legged_gym
 cd legged_gym && pip install -e .
 ```
@@ -38,7 +38,7 @@ cd legged_gym && pip install -e .
 
 Add path:
 
-```shell
+```bash
 mkdir $CONDA_PREFIX/etc/conda/activate.d -p
 echo "export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:$CONDA_PREFIX/lib" >> $CONDA_PREFIX/etc/conda/activate.d/env_vars.sh
 ```
@@ -53,7 +53,7 @@ Install a newer version of torch.
 
 4. Error relating to `libstdc++.so.6`.
 
-```shell
+```bash
 conda install -c conda-forge libstdcxx-ng
 ```
 
@@ -108,6 +108,75 @@ Key functions in class `ActorCritic`: `act()`, `get_actions_log_prob()`, `evalua
 
 Key functions in class `VecEnv`: `step()`.
 
+# 4 Install Isaac Gym on 50-series GPUs
+
+Need to manually build pytorch.
+
+Clone the repository:
+
+```bash
+git clone https://github.com/pytorch/pytorch
+cd pytorch
+git checkout v2.3.1
+git submodule update --init --recursive
+```
+
+Create a venv:
+
+```bash
+conda create -n isaacgym python=3.8
+conda activate isaacgym
+```
+
+Change the following lines in `cmake/Modules_CUDA_fix/upstream/FindCUDA/select_compute_arch.cmake`, line 227:
+
+```cmake
+else()
+  message(SEND_ERROR "Unknown CUDA Architecture Name ${arch_name} in CUDA_SELECT_NVCC_ARCH_FLAGS")
+endif()
+```
+
+to:
+
+```cmake
+else()
+  set(arch_bin 12.0)
+  set(arch_ptx 12.0)
+endif()
+```
+
+And `Dockerfile`, line 60:
+
+```dockerfile
+TORCH_CUDA_ARCH_LIST="3.5 5.2 6.0 6.1 7.0+PTX 8.0" TORCH_NVCC_FLAGS="-Xfatbin -compress-all" \
+```
+
+to
+
+```dockerfile
+TORCH_CUDA_ARCH_LIST="3.5 5.2 6.0 6.1 7.0+PTX 8.0 12.0" TORCH_NVCC_FLAGS="-Xfatbin -compress-all" \
+```
+
+Then run the following commands to build pytorch:
 
 
+```bash
+export USE_CUDA=1
+export USE_NUMPY=1
+export TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0;12.0"
+export MAX_JOBS=$(nproc)
 
+python setup.py bdist_wheel
+```
+
+The built wheel file is located in `dist/`. Install it using pip:
+
+```bash
+pip install dist/torch-2.3.1-cp38-cp38-linux_x86_64.whl
+```
+
+Compatible versions of other packages:
+
+```bash
+pip install torchvision==0.18.1 torchaudio==2.3.1 numpy==1.23.5
+```
